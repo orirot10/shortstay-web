@@ -1,0 +1,526 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Training DB — Vessel Explorer</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<style>
+* { margin:0; padding:0; box-sizing:border-box; }
+body {
+  font-family:'Segoe UI',system-ui,sans-serif;
+  background:#0d1117; color:#c9d1d9;
+  height:100vh; display:flex; flex-direction:column; overflow:hidden;
+}
+
+/* ── Topbar ── */
+#topbar {
+  display:flex; align-items:center; gap:12px; padding:8px 16px;
+  background:#161b22; border-bottom:1px solid #30363d;
+  flex-shrink:0; height:48px;
+}
+#topbar h1 { font-size:15px; color:#58a6ff; font-weight:600; white-space:nowrap; }
+a.nav-link {
+  font-size:12px; color:#484f58; text-decoration:none; padding:3px 8px;
+  border:1px solid #30363d; border-radius:4px;
+}
+a.nav-link:hover { color:#8b949e; border-color:#484f58; }
+.pill {
+  padding:3px 10px; border-radius:20px; font-size:11px; font-weight:600;
+  background:#21262d; border:1px solid #30363d; color:#8b949e; white-space:nowrap;
+}
+.pill.p-vessels { border-color:#388bfd; color:#79c0ff; }
+.pill.p-frames  { border-color:#3fb950; color:#56d364; }
+.pill.p-moving  { border-color:#d29922; color:#e3b341; }
+.pill.p-present { border-color:#bc8cff; color:#d2a8ff; }
+
+/* search */
+#search-wrap { margin-left:auto; position:relative; }
+#search-input {
+  padding:5px 10px 5px 28px; background:#21262d; border:1px solid #30363d;
+  color:#c9d1d9; border-radius:5px; font-size:12px; width:200px;
+}
+#search-input:focus { outline:none; border-color:#388bfd; }
+#search-icon {
+  position:absolute; left:8px; top:50%; transform:translateY(-50%);
+  color:#484f58; font-size:12px; pointer-events:none;
+}
+
+/* ── Main ── */
+#main { display:flex; flex:1; overflow:hidden; }
+
+/* ── Map ── */
+#map-wrap { flex:7; position:relative; }
+#map { width:100%; height:100%; }
+
+/* confidence legend on map */
+#map-legend {
+  position:absolute; bottom:24px; left:8px; z-index:1000;
+  background:rgba(22,27,34,.9); border:1px solid #30363d; border-radius:6px;
+  padding:8px 10px; font-size:10px; display:flex; flex-direction:column; gap:4px;
+}
+.leg-row { display:flex; align-items:center; gap:6px; }
+.leg-dot { width:10px; height:3px; border-radius:2px; flex-shrink:0; }
+
+/* ── Sidebar ── */
+#sidebar {
+  flex:3; min-width:260px; max-width:340px; background:#161b22;
+  border-left:1px solid #30363d; display:flex; flex-direction:column; overflow:hidden;
+}
+.s-sec { padding:10px 12px; border-bottom:1px solid #21262d; flex-shrink:0; }
+.s-sec h3 {
+  font-size:10px; letter-spacing:1px; text-transform:uppercase;
+  color:#484f58; margin-bottom:8px;
+}
+
+/* vessel list */
+#vessel-list-wrap { flex:1; overflow-y:auto; }
+.v-item {
+  display:flex; align-items:center; gap:8px; padding:6px 12px;
+  cursor:pointer; border-bottom:1px solid #0d1117; font-size:12px; transition:background .12s;
+}
+.v-item:hover  { background:#1a1f27; }
+.v-item.active { background:#1f3a5f; border-left:3px solid #388bfd; }
+.v-dot   { width:9px; height:9px; border-radius:50%; flex-shrink:0; }
+.v-name  { flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:#c9d1d9; }
+.v-mmsi  { font-size:10px; color:#484f58; }
+.v-badge {
+  font-size:9px; padding:1px 5px; border-radius:8px; font-weight:700; flex-shrink:0;
+  background:#21262d; color:#8b949e; border:1px solid #30363d;
+}
+.v-badge.moving  { background:#3d2300; color:#e3b341; border-color:#d29922; }
+.v-badge.close   { background:#0d2d17; color:#56d364; border-color:#3fb950; }
+.v-dist { font-size:10px; color:#58a6ff; white-space:nowrap; }
+
+/* detail panel */
+#detail-panel { padding:12px; overflow-y:auto; }
+.d-header { display:flex; align-items:baseline; gap:8px; margin-bottom:10px; }
+.d-name   { font-size:15px; font-weight:700; color:#e6edf3; }
+.d-mmsi   { font-size:11px; color:#484f58; }
+.d-type   { font-size:11px; color:#8b949e; }
+.d-grid   { display:grid; grid-template-columns:1fr 1fr; gap:6px; }
+.d-card   {
+  background:#0d1117; border:1px solid #21262d; border-radius:6px;
+  padding:8px; text-align:center;
+}
+.d-card .dv { font-size:17px; font-weight:700; color:#58a6ff; }
+.d-card .dl { font-size:10px; color:#484f58; margin-top:2px; }
+.d-card.warn .dv { color:#e3b341; }
+.d-card.good .dv { color:#56d364; }
+
+/* ── Bottom charts ── */
+#charts {
+  display:flex; gap:0; background:#161b22;
+  border-top:1px solid #30363d; flex-shrink:0; height:160px;
+}
+.chart-pane {
+  flex:1; padding:8px 12px; position:relative; border-right:1px solid #21262d;
+}
+.chart-pane:last-child { border-right:none; }
+.chart-title {
+  font-size:10px; letter-spacing:1px; text-transform:uppercase;
+  color:#484f58; margin-bottom:4px;
+}
+canvas.chart-c { width:100%!important; height:110px!important; }
+
+/* Leaflet overrides */
+.leaflet-popup-content-wrapper {
+  background:#161b22; color:#c9d1d9; border:1px solid #30363d; border-radius:6px;
+}
+.leaflet-popup-tip { background:#161b22; }
+.leaflet-popup-content { margin:10px 12px; font-size:12px; line-height:1.6; }
+.leaflet-tooltip { background:#161b22; border:1px solid #30363d; color:#c9d1d9; font-size:11px; }
+
+/* scrollbar */
+::-webkit-scrollbar { width:4px; }
+::-webkit-scrollbar-track { background:#0d1117; }
+::-webkit-scrollbar-thumb { background:#30363d; border-radius:2px; }
+
+/* no-data state */
+#no-data { display:none; align-items:center; justify-content:center;
+  flex-direction:column; gap:8px; height:100%; color:#484f58; font-size:13px; }
+</style>
+</head>
+<body>
+
+<div id="topbar">
+  <h1>⚓ Training DB — Vessel Explorer</h1>
+  <a class="nav-link" href="/">← AIS Dashboard</a>
+  <a class="nav-link" href="/labeling">Label Studio</a>
+  <span class="pill p-vessels" id="pill-vessels">Vessels: –</span>
+  <span class="pill p-frames"  id="pill-frames">Frames: –</span>
+  <span class="pill p-present" id="pill-present">Present: –</span>
+  <span class="pill p-moving"  id="pill-moving">Moving: –</span>
+  <div id="search-wrap">
+    <span id="search-icon">🔍</span>
+    <input id="search-input" type="text" placeholder="Search vessel name or MMSI…">
+  </div>
+</div>
+
+<div id="main">
+  <div id="map-wrap">
+    <div id="map"></div>
+    <div id="map-legend">
+      <div style="font-size:10px;color:#484f58;margin-bottom:2px">Track confidence</div>
+      <div class="leg-row"><div class="leg-dot" style="background:#56d364"></div><span style="color:#8b949e">High (≤30 s)</span></div>
+      <div class="leg-row"><div class="leg-dot" style="background:#e3b341"></div><span style="color:#8b949e">Medium (≤3 min)</span></div>
+      <div class="leg-row"><div class="leg-dot" style="background:#f85149"></div><span style="color:#8b949e">Low (≤10 min)</span></div>
+      <div class="leg-row"><div class="leg-dot" style="background:#2196f3;height:3px"></div><span style="color:#8b949e">Moving</span></div>
+    </div>
+  </div>
+
+  <div id="sidebar">
+    <div class="s-sec" style="padding-bottom:0">
+      <h3>Vessels in range <span id="vessel-count" style="color:#8b949e;text-transform:none;font-size:11px"></span></h3>
+    </div>
+    <div id="vessel-list-wrap">
+      <div id="vessel-list"></div>
+    </div>
+    <div class="s-sec" id="detail-sec" style="display:none; flex-shrink:0; max-height:220px; overflow-y:auto;">
+      <h3>Selected vessel</h3>
+      <div id="detail-panel"></div>
+    </div>
+  </div>
+</div>
+
+<div id="charts">
+  <div class="chart-pane">
+    <div class="chart-title">Distance from hydrophone (km)</div>
+    <canvas id="chart-dist" class="chart-c"></canvas>
+  </div>
+  <div class="chart-pane">
+    <div class="chart-title">Velocity — Speed Over Ground (knots)</div>
+    <canvas id="chart-sog" class="chart-c"></canvas>
+  </div>
+</div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script>
+// ── Constants ─────────────────────────────────────────────────────────────
+const HYDRO = [32.843153, 34.971938];
+const COLORS = [
+  '#58a6ff','#f0883e','#3fb950','#f85149','#bc8cff',
+  '#39d353','#ff9800','#ec4899','#00bcd4','#8b5cf6',
+  '#fbbf24','#34d399','#60a5fa','#fb7185','#a3e635',
+];
+const CONF_COLOR = { high:'#56d364', medium:'#e3b341', low:'#f85149', null:'#484f58' };
+
+// ── State ─────────────────────────────────────────────────────────────────
+let allVessels   = [];
+let filteredList = [];
+let selectedMMSI = null;
+let trackData    = [];
+let trackLayers  = [];
+let hoverMarker  = null;
+
+// ── Map ───────────────────────────────────────────────────────────────────
+const map = L.map('map', { preferCanvas:true }).setView(HYDRO, 13);
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+  attribution:'© OpenStreetMap', maxZoom:18,
+}).addTo(map);
+
+// Hydrophone marker
+L.marker(HYDRO, {
+  icon: L.divIcon({
+    className:'',
+    html:'<div style="width:14px;height:14px;background:#f85149;border:2px solid #fff;border-radius:50%;box-shadow:0 0 8px #f85149"></div>',
+    iconSize:[14,14], iconAnchor:[7,7],
+  })
+}).addTo(map).bindPopup('<b>Hydrophone</b><br>32.843153°N, 34.971938°E<br>Real position');
+
+// Position cursor (shows on chart hover)
+const cursorIcon = L.divIcon({
+  className:'',
+  html:'<div style="width:13px;height:13px;background:#fff;border:2px solid #58a6ff;border-radius:50%;box-shadow:0 0 6px #58a6ff;"></div>',
+  iconSize:[13,13], iconAnchor:[6,6],
+});
+
+// ── Charts ────────────────────────────────────────────────────────────────
+const chartOpts = (label, color) => ({
+  responsive:true, maintainAspectRatio:false, animation:false,
+  plugins: { legend:{ display:false }, tooltip:{ mode:'index', intersect:false,
+    callbacks:{ label: ctx => `${ctx.dataset.label}: ${ctx.parsed.y ?? '–'}` } } },
+  scales: {
+    x: { display:true, ticks:{ color:'#484f58', font:{size:9}, maxTicksLimit:8,
+           callback:(v,i) => trackData[i] ? fmtTs(trackData[i].t_start) : '' },
+         grid:{ color:'#1e1e3a' } },
+    y: { ticks:{ color:'#6b7280', font:{size:9} }, grid:{ color:'#1e1e3a' } },
+  },
+  onHover: (_e, elements) => onChartHover(elements),
+});
+
+const distChart = new Chart(document.getElementById('chart-dist'), {
+  type:'line',
+  data:{ labels:[], datasets:[{
+    label:'km', data:[], borderColor:'#58a6ff', borderWidth:1.5,
+    pointRadius:0, tension:0.3,
+    fill:{ target:'origin', above:'rgba(88,166,255,0.06)' },
+  }]},
+  options: chartOpts('km','#58a6ff'),
+});
+
+const sogChart = new Chart(document.getElementById('chart-sog'), {
+  type:'line',
+  data:{ labels:[], datasets:[{
+    label:'kn', data:[], borderColor:'#e3b341', borderWidth:1.5,
+    pointRadius:0, tension:0.3,
+    fill:{ target:'origin', above:'rgba(227,179,65,0.06)' },
+  }]},
+  options: chartOpts('kn','#e3b341'),
+});
+
+function onChartHover(elements) {
+  if (!elements.length || !trackData.length) return;
+  const idx = elements[0].index;
+  const pt  = trackData[idx];
+  if (!pt || !pt.vessel_lat || !pt.vessel_lon) return;
+  const latlng = [pt.vessel_lat, pt.vessel_lon];
+  if (!hoverMarker) {
+    hoverMarker = L.marker(latlng, { icon:cursorIcon, zIndexOffset:2000 }).addTo(map);
+  } else {
+    hoverMarker.setLatLng(latlng);
+  }
+}
+
+// ── Helpers ───────────────────────────────────────────────────────────────
+function colorFor(idx) { return COLORS[idx % COLORS.length]; }
+
+function fmtTs(ts) {
+  if (!ts) return '–';
+  return ts.replace(' UTC','').slice(5).replace('.5','');  // "MM-DD HH:MM:SS"
+}
+
+function fmtDist(km) {
+  if (km == null) return '–';
+  return km.toFixed(2) + ' km';
+}
+
+function fmtSog(kn) {
+  if (kn == null) return '–';
+  return kn.toFixed(1) + ' kn';
+}
+
+// ── Init ──────────────────────────────────────────────────────────────────
+async function init() {
+  const [stats, vessels] = await Promise.all([
+    fetch('/api/training/stats').then(r => r.json()),
+    fetch('/api/training/vessels').then(r => r.json()),
+  ]);
+
+  document.getElementById('pill-vessels').textContent = `Vessels: ${stats.unique_vessels || vessels.length}`;
+  document.getElementById('pill-frames').textContent  = `Frames: ${Number(stats.total_frames).toLocaleString()}`;
+  const pctPres = stats.total_frames > 0
+    ? Math.round(100 * stats.frames_present / stats.total_frames) : 0;
+  const pctMov = stats.total_frames > 0
+    ? Math.round(100 * stats.frames_moving / stats.total_frames) : 0;
+  document.getElementById('pill-present').textContent = `Present: ${pctPres}%`;
+  document.getElementById('pill-moving').textContent  = `Moving: ${pctMov}%`;
+
+  allVessels = vessels;
+  renderVesselList(vessels);
+}
+
+// ── Vessel list ───────────────────────────────────────────────────────────
+function renderVesselList(list) {
+  filteredList = list;
+  const el = document.getElementById('vessel-list');
+  el.innerHTML = '';
+  document.getElementById('vessel-count').textContent = `(${list.length})`;
+
+  list.forEach((v, i) => {
+    const globalIdx = allVessels.indexOf(v);
+    const color = colorFor(globalIdx);
+    const isMoving = v.pct_moving > 10;
+    const isClose  = v.min_dist_km < 3;
+
+    const div = document.createElement('div');
+    div.className = 'v-item' + (v.mmsi === selectedMMSI ? ' active' : '');
+    div.innerHTML = `
+      <div class="v-dot" style="background:${color}"></div>
+      <div style="flex:1;min-width:0">
+        <div class="v-name">${v.ship_name || '—'}</div>
+        <div class="v-mmsi">${v.mmsi}</div>
+      </div>
+      <div class="v-dist">${fmtDist(v.min_dist_km)}</div>
+      ${isMoving ? '<span class="v-badge moving">MOV</span>' : ''}
+      ${isClose  ? '<span class="v-badge close">CLOSE</span>' : ''}
+    `;
+    div.addEventListener('click', () => selectVessel(v.mmsi));
+    el.appendChild(div);
+  });
+}
+
+// ── Search ────────────────────────────────────────────────────────────────
+document.getElementById('search-input').addEventListener('input', e => {
+  const q = e.target.value.toLowerCase().trim();
+  const filtered = q
+    ? allVessels.filter(v =>
+        (v.ship_name || '').toLowerCase().includes(q) ||
+        String(v.mmsi).includes(q))
+    : allVessels;
+  renderVesselList(filtered);
+});
+
+// ── Select vessel ─────────────────────────────────────────────────────────
+async function selectVessel(mmsi) {
+  selectedMMSI = mmsi;
+  renderVesselList(filteredList);
+
+  const v = allVessels.find(v => v.mmsi === mmsi);
+  if (!v) return;
+
+  // Show detail panel
+  showDetail(v);
+
+  // Clear old track
+  trackLayers.forEach(l => map.removeLayer(l));
+  trackLayers = [];
+  if (hoverMarker) { map.removeLayer(hoverMarker); hoverMarker = null; }
+
+  // Fetch track (downsampled)
+  trackData = await fetch(`/api/training/vessel/${mmsi}`).then(r => r.json());
+  if (!trackData.length) return;
+
+  drawTrack(trackData, v);
+  updateCharts(trackData);
+
+  // Fit map to track
+  const pts = trackData.filter(p => p.vessel_lat && p.vessel_lon).map(p => [p.vessel_lat, p.vessel_lon]);
+  if (pts.length) map.fitBounds(L.latLngBounds(pts), { padding:[40,40] });
+}
+
+// ── Draw track ────────────────────────────────────────────────────────────
+function drawTrack(data, vessel) {
+  const globalIdx = allVessels.findIndex(v => v.mmsi === vessel.mmsi);
+  const baseColor = colorFor(globalIdx);
+
+  // Build segments grouped by AIS confidence color
+  let curConf = null, curPts = [];
+
+  function flushSegment() {
+    if (curPts.length < 2) { curPts = []; return; }
+    const color = CONF_COLOR[curConf] || '#484f58';
+    const pl = L.polyline(curPts, { color, weight:2.5, opacity:0.8 }).addTo(map);
+    trackLayers.push(pl);
+    curPts = [];
+  }
+
+  data.forEach(p => {
+    if (!p.vessel_lat || !p.vessel_lon) return;
+    if (p.ais_confidence !== curConf) {
+      flushSegment();
+      curConf = p.ais_confidence;
+    }
+    curPts.push([p.vessel_lat, p.vessel_lon]);
+  });
+  flushSegment();
+
+  // Blue overlay for moving segments
+  let movPts = [];
+  function flushMov() {
+    if (movPts.length < 2) { movPts = []; return; }
+    const pl = L.polyline(movPts, { color:'#2196f3', weight:4, opacity:0.9 }).addTo(map);
+    trackLayers.push(pl);
+    movPts = [];
+  }
+
+  let lastMoving = null;
+  data.forEach(p => {
+    if (!p.vessel_lat || !p.vessel_lon) return;
+    if (p.is_moving === 1) {
+      movPts.push([p.vessel_lat, p.vessel_lon]);
+      lastMoving = true;
+    } else {
+      if (lastMoving === true) flushMov();
+      lastMoving = false;
+    }
+  });
+  flushMov();
+
+  // Start / end markers
+  const first = data.find(p => p.vessel_lat);
+  const last  = [...data].reverse().find(p => p.vessel_lat);
+  if (first) {
+    const m = L.circleMarker([first.vessel_lat, first.vessel_lon],
+      { radius:6, color:'#fff', fillColor:'#56d364', fillOpacity:1, weight:2 })
+      .addTo(map)
+      .bindTooltip(`${vessel.ship_name || vessel.mmsi}<br>Start: ${fmtTs(first.t_start)}`);
+    trackLayers.push(m);
+  }
+  if (last && last !== first) {
+    const m = L.circleMarker([last.vessel_lat, last.vessel_lon],
+      { radius:6, color:'#fff', fillColor:'#f85149', fillOpacity:1, weight:2 })
+      .addTo(map)
+      .bindTooltip(`${vessel.ship_name || vessel.mmsi}<br>End: ${fmtTs(last.t_start)}`);
+    trackLayers.push(m);
+  }
+}
+
+// ── Update charts ─────────────────────────────────────────────────────────
+function updateCharts(data) {
+  const labels = data.map((_, i) => i);
+  const dists  = data.map(p => p.dist_km   != null ? +p.dist_km.toFixed(3)  : null);
+  const sogs   = data.map(p => p.sog_kn    != null ? +p.sog_kn.toFixed(2)   : null);
+
+  distChart.data.labels                = labels;
+  distChart.data.datasets[0].data      = dists;
+  distChart.update();
+
+  sogChart.data.labels                 = labels;
+  sogChart.data.datasets[0].data       = sogs;
+  sogChart.update();
+}
+
+// ── Detail panel ──────────────────────────────────────────────────────────
+function showDetail(v) {
+  document.getElementById('detail-sec').style.display = 'block';
+  const globalIdx = allVessels.findIndex(x => x.mmsi === v.mmsi);
+  const color = colorFor(globalIdx);
+
+  const timeFirst = fmtTs(v.first_seen);
+  const timeLast  = fmtTs(v.last_seen);
+  const frameHours = (v.frame_count * 0.5 / 3600).toFixed(1);
+
+  document.getElementById('detail-panel').innerHTML = `
+    <div class="d-header">
+      <div style="width:11px;height:11px;border-radius:50%;background:${color};flex-shrink:0"></div>
+      <span class="d-name">${v.ship_name || '—'}</span>
+      <span class="d-mmsi">${v.mmsi}</span>
+    </div>
+    <div style="font-size:11px;color:#8b949e;margin-bottom:8px">
+      ${v.ship_type || 'Type unknown'} &nbsp;·&nbsp;
+      ${timeFirst.slice(0,8)} – ${timeLast.slice(0,8)}
+    </div>
+    <div class="d-grid">
+      <div class="d-card good">
+        <div class="dv">${fmtDist(v.min_dist_km)}</div>
+        <div class="dl">Closest approach</div>
+      </div>
+      <div class="d-card">
+        <div class="dv">${fmtDist(v.avg_dist_km)}</div>
+        <div class="dl">Avg distance</div>
+      </div>
+      <div class="d-card ${v.pct_moving > 20 ? 'warn' : ''}">
+        <div class="dv">${v.pct_moving}%</div>
+        <div class="dl">Time moving</div>
+      </div>
+      <div class="d-card">
+        <div class="dv">${fmtSog(v.max_sog)}</div>
+        <div class="dl">Max speed</div>
+      </div>
+      <div class="d-card">
+        <div class="dv">${fmtSog(v.avg_sog)}</div>
+        <div class="dl">Avg SOG</div>
+      </div>
+      <div class="d-card">
+        <div class="dv">${frameHours}h</div>
+        <div class="dl">In range</div>
+      </div>
+    </div>
+  `;
+}
+
+init();
+</script>
+</body>
+</html>

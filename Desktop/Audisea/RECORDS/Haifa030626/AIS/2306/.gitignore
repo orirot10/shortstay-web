@@ -1,0 +1,11 @@
+# Large generated files — upload separately to Render disk
+ais_dashboard/training_db.db
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.env
+
+# Raw data (optional — remove these lines if you want them in git)
+# ais_raw_20260602.jsonl

@@ -1,0 +1,13 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(Start-Sleep -Seconds 3)",
+      "Bash(Invoke-WebRequest -Uri \"http://localhost:5050/api/files\" -UseBasicParsing)",
+      "Bash(Select-Object -ExpandProperty Content)",
+      "Bash(curl -s http://localhost:5050/api/files)",
+      "Bash(curl -s http://localhost:5050/api/vessels)",
+      "Read(//mnt/c/Users/TOSHIBA/Desktop/Audisea/RECORDS/Haifa030626/AIS/**)",
+      "Read(//mnt/c/Users/TOSHIBA/Desktop/Audisea/RECORDS/Haifa030626/**)"
+    ]
+  }
+}

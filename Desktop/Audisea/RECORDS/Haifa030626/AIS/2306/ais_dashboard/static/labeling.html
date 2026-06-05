@@ -1,0 +1,562 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>AIS Label Studio</title>
+<style>
+* { margin:0; padding:0; box-sizing:border-box; }
+body {
+  font-family:'Segoe UI',system-ui,sans-serif;
+  background:#0d1117; color:#c9d1d9;
+  height:100vh; display:flex; flex-direction:column; overflow:hidden;
+}
+
+/* ── Header ── */
+#header {
+  display:flex; align-items:center; gap:16px; padding:10px 18px;
+  background:#161b22; border-bottom:1px solid #30363d; flex-shrink:0;
+}
+#header h1 { font-size:15px; color:#58a6ff; font-weight:600; }
+#header a  { font-size:12px; color:#484f58; text-decoration:none; }
+#header a:hover { color:#8b949e; }
+
+#progress-wrap { flex:1; display:flex; align-items:center; gap:10px; }
+#prog-bar-bg {
+  flex:1; height:6px; background:#21262d; border-radius:3px; overflow:hidden;
+}
+#prog-bar { height:100%; background:#1f6feb; border-radius:3px; transition:width .3s; }
+#prog-text { font-size:12px; color:#8b949e; white-space:nowrap; }
+
+.stat-chip {
+  font-size:11px; padding:2px 8px; border-radius:10px; font-weight:600;
+}
+.chip-labeled { background:#033a16; color:#56d364; border:1px solid #3fb950; }
+.chip-pending { background:#161b22; color:#8b949e; border:1px solid #30363d; }
+.chip-skipped { background:#1c1c1c; color:#484f58; border:1px solid #21262d; }
+
+/* ── Body ── */
+#body { display:flex; flex:1; overflow:hidden; }
+
+/* ── Left: context ── */
+#ctx-panel {
+  width:340px; flex-shrink:0; background:#161b22;
+  border-right:1px solid #30363d; display:flex; flex-direction:column;
+  overflow-y:auto;
+}
+.ctx-sec { padding:12px 14px; border-bottom:1px solid #21262d; }
+.ctx-sec h3 {
+  font-size:10px; letter-spacing:1px; text-transform:uppercase;
+  color:#484f58; margin-bottom:8px;
+}
+
+#window-info .wi-time {
+  font-size:20px; font-weight:700; color:#e6edf3; line-height:1.2;
+}
+#window-info .wi-date {
+  font-size:12px; color:#8b949e; margin-top:2px;
+}
+#window-info .wi-id {
+  font-size:11px; color:#484f58; margin-top:6px;
+}
+
+/* Suggestion badge */
+#ais-suggestion {
+  display:flex; align-items:center; gap:8px; padding:8px 10px;
+  border-radius:6px; font-size:13px; font-weight:600;
+}
+#ais-suggestion.present { background:#1a3a2a; border:1px solid #3fb950; color:#56d364; }
+#ais-suggestion.absent  { background:#1c1c1c; border:1px solid #30363d; color:#484f58; }
+
+/* Vessels table */
+#vessels-table { width:100%; border-collapse:collapse; font-size:11px; }
+#vessels-table th {
+  color:#484f58; font-weight:500; text-align:left;
+  padding:3px 5px; border-bottom:1px solid #21262d;
+}
+#vessels-table td { padding:4px 5px; border-bottom:1px solid #0d1117; }
+#vessels-table tr:hover td { background:#1a1f27; }
+.dist-badge {
+  display:inline-block; padding:1px 5px; border-radius:8px; font-size:10px;
+  background:#1f2d1a; color:#56d364; border:1px solid #3fb950;
+}
+.dist-badge.far { background:#2d1a1a; color:#ff7b72; border-color:#f85149; }
+
+/* ── Right: label form ── */
+#label-panel {
+  flex:1; overflow-y:auto; padding:20px 24px;
+  display:flex; flex-direction:column; gap:18px;
+}
+
+.field-group label {
+  display:block; font-size:11px; color:#484f58;
+  letter-spacing:0.8px; text-transform:uppercase; margin-bottom:8px;
+}
+
+/* Toggle buttons */
+.toggle-row { display:flex; gap:6px; }
+.toggle-btn {
+  padding:7px 18px; border-radius:5px; font-size:13px; font-weight:600;
+  cursor:pointer; border:1px solid #30363d; background:#21262d; color:#8b949e;
+  transition:all .15s;
+}
+.toggle-btn:hover { border-color:#58a6ff; color:#c9d1d9; }
+.toggle-btn.active-yes { background:#1a3a2a; border-color:#3fb950; color:#56d364; }
+.toggle-btn.active-no  { background:#2d0f0d; border-color:#f85149; color:#ff7b72; }
+
+/* Select */
+select.label-select {
+  width:100%; padding:7px 10px; background:#21262d;
+  border:1px solid #30363d; color:#c9d1d9; border-radius:5px;
+  font-size:13px; cursor:pointer; color-scheme:dark;
+}
+select.label-select:focus { outline:none; border-color:#388bfd; }
+select.label-select:disabled { opacity:0.4; cursor:not-allowed; }
+
+/* Confidence stars */
+.conf-row { display:flex; gap:6px; }
+.conf-btn {
+  flex:1; padding:7px; border-radius:5px; border:1px solid #30363d;
+  background:#21262d; color:#8b949e; cursor:pointer; font-size:12px;
+  text-align:center; transition:all .15s;
+}
+.conf-btn:hover { border-color:#d29922; color:#e3b341; }
+.conf-btn.active { background:#3d2300; border-color:#d29922; color:#e3b341; }
+
+/* Textarea */
+textarea {
+  width:100%; padding:8px 10px; background:#21262d;
+  border:1px solid #30363d; color:#c9d1d9; border-radius:5px;
+  font-size:12px; resize:vertical; min-height:54px; font-family:inherit;
+}
+textarea:focus { outline:none; border-color:#388bfd; }
+
+/* Actions */
+#actions { display:flex; gap:8px; margin-top:4px; }
+.btn-save {
+  flex:1; padding:10px; background:#1f6feb; border:none;
+  color:#fff; border-radius:5px; font-size:13px; font-weight:600;
+  cursor:pointer; transition:background .15s;
+}
+.btn-save:hover { background:#388bfd; }
+.btn-save:disabled { opacity:0.4; cursor:not-allowed; }
+.btn-skip {
+  padding:10px 16px; background:#21262d; border:1px solid #30363d;
+  color:#8b949e; border-radius:5px; font-size:13px; cursor:pointer;
+  transition:all .15s;
+}
+.btn-skip:hover { background:#30363d; color:#c9d1d9; }
+.btn-prev {
+  padding:10px 14px; background:#21262d; border:1px solid #30363d;
+  color:#8b949e; border-radius:5px; font-size:13px; cursor:pointer;
+}
+.btn-prev:hover { background:#30363d; color:#c9d1d9; }
+
+/* Keyboard hint */
+#kbd-hint {
+  font-size:10px; color:#484f58; margin-top:auto; padding-top:8px;
+  border-top:1px solid #21262d; line-height:1.8;
+}
+kbd {
+  display:inline-block; background:#21262d; border:1px solid #30363d;
+  border-radius:3px; padding:0 4px; font-size:9px; color:#8b949e;
+}
+
+/* No DB notice */
+#no-db {
+  flex:1; display:flex; align-items:center; justify-content:center;
+  flex-direction:column; gap:12px; color:#484f58;
+}
+#no-db code {
+  background:#21262d; padding:6px 12px; border-radius:5px;
+  font-size:13px; color:#e3b341; border:1px solid #30363d;
+}
+
+/* Done notice */
+#done-notice {
+  flex:1; display:flex; align-items:center; justify-content:center;
+  flex-direction:column; gap:10px;
+}
+#done-notice h2 { color:#56d364; font-size:22px; }
+#done-notice p  { color:#8b949e; font-size:14px; }
+.btn-export {
+  padding:10px 20px; background:#1f6feb; border:none;
+  color:#fff; border-radius:5px; font-size:13px; cursor:pointer;
+}
+</style>
+</head>
+<body>
+
+<div id="header">
+  <h1>⚓ AIS Label Studio</h1>
+  <a href="/">← Dashboard</a>
+  <div id="progress-wrap">
+    <div id="prog-bar-bg"><div id="prog-bar" style="width:0%"></div></div>
+    <span id="prog-text">–</span>
+  </div>
+  <span class="stat-chip chip-labeled" id="chip-labeled">– labeled</span>
+  <span class="stat-chip chip-skipped" id="chip-skipped">– skipped</span>
+  <span class="stat-chip chip-pending" id="chip-pending">– pending</span>
+  <a href="/api/labels/export.csv" style="margin-left:4px;padding:4px 10px;background:#21262d;border:1px solid #30363d;border-radius:4px;font-size:11px;color:#58a6ff">Export CSV</a>
+</div>
+
+<div id="body">
+  <!-- Loading / error states (shown before data loads) -->
+  <div id="no-db" style="display:none">
+    <div style="font-size:32px">🗄️</div>
+    <div style="font-size:15px;color:#c9d1d9">No labeling database found</div>
+    <div style="font-size:13px">Run this command first:</div>
+    <code>cd ais_dashboard &amp;&amp; python generate_windows.py</code>
+    <div style="font-size:12px">Then refresh this page.</div>
+  </div>
+
+  <div id="done-notice" style="display:none">
+    <div style="font-size:40px">✅</div>
+    <h2>All windows labeled!</h2>
+    <p id="done-stats"></p>
+    <a href="/api/labels/export.csv"><button class="btn-export">Download labels.csv</button></a>
+  </div>
+
+  <!-- Main labeling UI -->
+  <div id="ctx-panel">
+    <div class="ctx-sec" id="window-info">
+      <h3>Window</h3>
+      <div class="wi-time" id="wi-time">–</div>
+      <div class="wi-date" id="wi-date">–</div>
+      <div class="wi-id"   id="wi-id">–</div>
+    </div>
+
+    <div class="ctx-sec">
+      <h3>AIS Suggestion</h3>
+      <div id="ais-suggestion" class="absent">— loading —</div>
+    </div>
+
+    <div class="ctx-sec">
+      <h3>Vessels Nearby (&lt;15 km)</h3>
+      <table id="vessels-table">
+        <thead><tr>
+          <th>Name / MMSI</th><th>Type</th><th>Dist</th><th>Bear</th>
+        </tr></thead>
+        <tbody id="vessels-tbody"></tbody>
+      </table>
+      <div id="no-vessels" style="font-size:11px;color:#484f58;padding:6px 0;display:none">
+        No AIS vessels within 15 km
+      </div>
+    </div>
+  </div>
+
+  <div id="label-panel">
+    <div class="field-group">
+      <label>Vessel present? <kbd>Y</kbd> / <kbd>N</kbd></label>
+      <div class="toggle-row">
+        <button class="toggle-btn" id="btn-yes" onclick="setPresent(1)">✔ Yes — vessel audible</button>
+        <button class="toggle-btn" id="btn-no"  onclick="setPresent(0)">✘ No — ambient / silent</button>
+      </div>
+    </div>
+
+    <div class="field-group">
+      <label>Ship type <kbd>1</kbd>–<kbd>7</kbd></label>
+      <select class="label-select" id="sel-type">
+        <option value="">— select —</option>
+        <option value="cargo">Cargo</option>
+        <option value="tanker">Tanker</option>
+        <option value="passenger">Passenger</option>
+        <option value="fishing">Fishing</option>
+        <option value="pilot_tug">Pilot / Tug</option>
+        <option value="dredger">Dredger</option>
+        <option value="sailing">Sailing / Recreational</option>
+        <option value="other">Other</option>
+        <option value="unknown">Unknown</option>
+        <option value="none">None (no vessel)</option>
+      </select>
+    </div>
+
+    <div class="field-group">
+      <label>Noise / signature class <kbd>Q</kbd>–<kbd>T</kbd></label>
+      <select class="label-select" id="sel-noise">
+        <option value="">— select —</option>
+        <option value="propeller">Propeller cavitation</option>
+        <option value="engine">Engine hum / machinery</option>
+        <option value="biologics">Biological (fish, dolphins…)</option>
+        <option value="background">Ocean background</option>
+        <option value="mixed">Mixed / multiple sources</option>
+        <option value="other">Other / unclear</option>
+        <option value="none">None / silent</option>
+      </select>
+    </div>
+
+    <div class="field-group">
+      <label>Confidence <kbd>1</kbd> <kbd>2</kbd> <kbd>3</kbd></label>
+      <div class="conf-row">
+        <button class="conf-btn" id="conf1" onclick="setConf(1)">★☆☆ Low</button>
+        <button class="conf-btn" id="conf2" onclick="setConf(2)">★★☆ Medium</button>
+        <button class="conf-btn" id="conf3" onclick="setConf(3)">★★★ High</button>
+      </div>
+    </div>
+
+    <div class="field-group">
+      <label>Notes (optional)</label>
+      <textarea id="notes-field" placeholder="e.g. faint signature, uncertain type…"></textarea>
+    </div>
+
+    <div id="actions">
+      <button class="btn-prev" onclick="goPrev()" title="Previous (←)">← Prev</button>
+      <button class="btn-skip" onclick="doSkip()" title="Skip (S)">Skip</button>
+      <button class="btn-save" id="btn-save" onclick="doSave()" title="Save & Next (Enter)">Save &amp; Next →</button>
+    </div>
+
+    <div id="kbd-hint">
+      <kbd>Y</kbd> Yes &nbsp; <kbd>N</kbd> No &nbsp;
+      <kbd>1</kbd>–<kbd>7</kbd> ship type &nbsp;
+      <kbd>Q</kbd>–<kbd>T</kbd> noise &nbsp;
+      <kbd>1</kbd><kbd>2</kbd><kbd>3</kbd> confidence &nbsp;
+      <kbd>S</kbd> skip &nbsp;
+      <kbd>Enter</kbd> save &amp; next &nbsp;
+      <kbd>←</kbd> previous
+    </div>
+  </div>
+</div>
+
+<script>
+// ── State ─────────────────────────────────────────────────────────────────
+let currentId   = null;
+let pendingIds  = [];    // ordered list of all pending IDs
+let curIdx      = 0;
+let stats       = {};
+let labelPresent = null;
+let labelConf   = null;
+
+// ── Init ──────────────────────────────────────────────────────────────────
+async function init() {
+  const statsData = await fetch('/api/labels/stats').catch(() => null);
+  if (!statsData || !statsData.ok) {
+    showNoDB(); return;
+  }
+  const s = await statsData.json();
+  if (s.error) { showNoDB(); return; }
+  stats = s;
+  updateHeader();
+
+  if (s.pending === 0) { showDone(); return; }
+
+  // Load all pending IDs (paginated)
+  pendingIds = await loadAllPendingIds();
+  if (!pendingIds.length) { showDone(); return; }
+
+  curIdx = 0;
+  await loadWindow(pendingIds[0]);
+}
+
+async function loadAllPendingIds() {
+  const ids = [];
+  let offset = 0;
+  const limit = 200;
+  while (true) {
+    const r = await fetch(`/api/labels/windows?status=pending&offset=${offset}&limit=${limit}`).then(r => r.json());
+    r.forEach(w => ids.push(w.id));
+    if (r.length < limit) break;
+    offset += limit;
+  }
+  return ids;
+}
+
+// ── Load window ───────────────────────────────────────────────────────────
+async function loadWindow(id) {
+  currentId    = id;
+  labelPresent = null;
+  labelConf    = null;
+
+  // Reset form
+  document.getElementById('btn-yes').className  = 'toggle-btn';
+  document.getElementById('btn-no').className   = 'toggle-btn';
+  document.getElementById('sel-type').value     = '';
+  document.getElementById('sel-noise').value    = '';
+  document.getElementById('notes-field').value  = '';
+  [1,2,3].forEach(c => document.getElementById(`conf${c}`).classList.remove('active'));
+
+  const data = await fetch(`/api/labels/window/${id}`).then(r => r.json());
+
+  // Window info
+  const ts = data.t_start.replace(' UTC','');
+  const te = data.t_end.replace(' UTC','');
+  document.getElementById('wi-time').textContent = ts.slice(11,19) + ' – ' + te.slice(11,19);
+  document.getElementById('wi-date').textContent = ts.slice(0,10) + ' UTC';
+  document.getElementById('wi-id').textContent   = `Window #${data.id} · ${data.duration_sec}s`;
+
+  // AIS suggestion
+  const sug = document.getElementById('ais-suggestion');
+  if (data.ais_suggested_present) {
+    sug.className = 'present';
+    const name = data.ais_closest_name || data.ais_closest_mmsi || '?';
+    sug.textContent = `✔ ${name} — ${data.ais_closest_type || '?'} — ${data.ais_closest_dist_km} km`;
+    // Pre-fill ship type from AIS
+    const aisType = aisTypeToLabel(data.ais_closest_type);
+    if (aisType) document.getElementById('sel-type').value = aisType;
+  } else {
+    sug.className = 'absent';
+    sug.textContent = '— No vessel within range';
+    document.getElementById('sel-type').value  = 'none';
+    document.getElementById('sel-noise').value = 'background';
+  }
+
+  // Vessels table
+  const tbody = document.getElementById('vessels-tbody');
+  tbody.innerHTML = '';
+  const nearby = (data.ais_context || []).filter(v => v.dist_km <= 15);
+  document.getElementById('no-vessels').style.display = nearby.length ? 'none' : 'block';
+  nearby.forEach(v => {
+    const tr = document.createElement('tr');
+    const distClass = v.dist_km < 5 ? '' : 'far';
+    tr.innerHTML = `
+      <td>${v.name || '—'}<br><span style="color:#484f58;font-size:10px">${v.mmsi}</span></td>
+      <td style="color:#8b949e">${v.type || '?'}</td>
+      <td><span class="dist-badge ${distClass}">${v.dist_km} km</span></td>
+      <td style="color:#484f58">${v.bearing_deg}°</td>
+    `;
+    tbody.appendChild(tr);
+  });
+
+  document.getElementById('btn-save').disabled = false;
+}
+
+// ── Label helpers ─────────────────────────────────────────────────────────
+function setPresent(val) {
+  labelPresent = val;
+  document.getElementById('btn-yes').className = 'toggle-btn' + (val === 1 ? ' active-yes' : '');
+  document.getElementById('btn-no').className  = 'toggle-btn' + (val === 0 ? ' active-no'  : '');
+  if (val === 0) {
+    document.getElementById('sel-type').value  = 'none';
+    document.getElementById('sel-noise').value = 'background';
+  } else if (val === 1) {
+    if (document.getElementById('sel-type').value === 'none') {
+      document.getElementById('sel-type').value = '';
+    }
+  }
+}
+
+function setConf(c) {
+  labelConf = c;
+  [1,2,3].forEach(n => {
+    document.getElementById(`conf${n}`).classList.toggle('active', n === c);
+  });
+}
+
+function aisTypeToLabel(aisType) {
+  if (!aisType) return '';
+  const t = aisType.toLowerCase();
+  if (t.includes('cargo'))     return 'cargo';
+  if (t.includes('tanker'))    return 'tanker';
+  if (t.includes('passenger')) return 'passenger';
+  if (t.includes('fishing'))   return 'fishing';
+  if (t.includes('pilot') || t.includes('tug')) return 'pilot_tug';
+  if (t.includes('dredg'))     return 'dredger';
+  if (t.includes('sail') || t.includes('pleasure')) return 'sailing';
+  return '';
+}
+
+// ── Save / Skip / Navigate ────────────────────────────────────────────────
+async function doSave() {
+  if (labelPresent === null) { alert('Please select Yes or No'); return; }
+  if (!labelConf)            { alert('Please set confidence'); return; }
+  const payload = {
+    present:     labelPresent,
+    ship_type:   document.getElementById('sel-type').value  || null,
+    noise_class: document.getElementById('sel-noise').value || null,
+    confidence:  labelConf,
+    notes:       document.getElementById('notes-field').value.trim(),
+    labeled_by:  'labeler',
+  };
+  const res = await fetch(`/api/labels/save/${currentId}`, {
+    method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify(payload),
+  }).then(r => r.json());
+
+  stats.labeled = (stats.labeled || 0) + 1;
+  stats.pending = Math.max(0, (stats.pending || 1) - 1);
+  updateHeader();
+
+  // Remove current from pending list
+  pendingIds.splice(curIdx, 1);
+  if (!pendingIds.length) { showDone(); return; }
+  if (curIdx >= pendingIds.length) curIdx = pendingIds.length - 1;
+  await loadWindow(pendingIds[curIdx]);
+}
+
+async function doSkip() {
+  await fetch(`/api/labels/skip/${currentId}`, { method:'POST' });
+  stats.skipped = (stats.skipped || 0) + 1;
+  stats.pending = Math.max(0, (stats.pending || 1) - 1);
+  updateHeader();
+  pendingIds.splice(curIdx, 1);
+  if (!pendingIds.length) { showDone(); return; }
+  if (curIdx >= pendingIds.length) curIdx = pendingIds.length - 1;
+  await loadWindow(pendingIds[curIdx]);
+}
+
+async function goPrev() {
+  if (curIdx <= 0) return;
+  curIdx--;
+  await loadWindow(pendingIds[curIdx]);
+}
+
+// ── UI state ──────────────────────────────────────────────────────────────
+function updateHeader() {
+  const total   = (stats.total   || 0);
+  const labeled = (stats.labeled || 0);
+  const pending = (stats.pending || 0);
+  const skipped = (stats.skipped || 0);
+  const pct = total > 0 ? Math.round(100 * (labeled + skipped) / total) : 0;
+  document.getElementById('prog-bar').style.width  = pct + '%';
+  document.getElementById('prog-text').textContent = `${labeled + skipped} / ${total} (${pct}%)`;
+  document.getElementById('chip-labeled').textContent = `${labeled} labeled`;
+  document.getElementById('chip-skipped').textContent = `${skipped} skipped`;
+  document.getElementById('chip-pending').textContent = `${pending} pending`;
+}
+
+function showNoDB() {
+  document.getElementById('ctx-panel').style.display  = 'none';
+  document.getElementById('label-panel').style.display = 'none';
+  document.getElementById('no-db').style.display       = 'flex';
+}
+
+function showDone() {
+  document.getElementById('ctx-panel').style.display   = 'none';
+  document.getElementById('label-panel').style.display = 'none';
+  document.getElementById('no-db').style.display        = 'none';
+  document.getElementById('done-notice').style.display  = 'flex';
+  document.getElementById('done-stats').textContent =
+    `${stats.labeled || 0} windows labeled · ${stats.skipped || 0} skipped`;
+}
+
+// ── Keyboard shortcuts ────────────────────────────────────────────────────
+document.addEventListener('keydown', e => {
+  if (e.target.tagName === 'TEXTAREA') return;
+  const k = e.key.toLowerCase();
+
+  if (k === 'y')     { setPresent(1); return; }
+  if (k === 'n')     { setPresent(0); return; }
+  if (k === 's')     { doSkip(); return; }
+  if (k === 'enter') { e.preventDefault(); doSave(); return; }
+  if (k === 'arrowleft') { goPrev(); return; }
+
+  // Confidence: 1, 2, 3
+  if (['1','2','3'].includes(e.key)) { setConf(parseInt(e.key)); return; }
+
+  // Ship type shortcuts (not conflict with conf)
+  const typeMap = {
+    't': 'tanker', 'c': 'cargo', 'p': 'passenger',
+    'f': 'fishing', 'u': 'pilot_tug', 'd': 'dredger',
+    'o': 'other',
+  };
+  if (typeMap[k] && !e.ctrlKey && !e.altKey) {
+    document.getElementById('sel-type').value = typeMap[k]; return;
+  }
+
+  // Noise class shortcuts
+  const noiseMap = { 'q': 'propeller', 'w': 'engine', 'e': 'biologics', 'r': 'background' };
+  if (noiseMap[k]) { document.getElementById('sel-noise').value = noiseMap[k]; return; }
+});
+
+init();
+</script>
+</body>
+</html>

@@ -1,0 +1,764 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AIS Trajectory Dashboard</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+  font-family: 'Segoe UI', system-ui, sans-serif;
+  background: #0d1117; color: #c9d1d9;
+  height: 100vh; display: flex; flex-direction: column; overflow: hidden;
+}
+
+/* ── Top bar ─────────────────────────────────────────────── */
+#topbar {
+  display: flex; align-items: center; gap: 14px; padding: 8px 16px;
+  background: #161b22; border-bottom: 1px solid #30363d; flex-shrink: 0; height: 48px;
+}
+#topbar h1 { font-size: 16px; color: #58a6ff; letter-spacing: 0.4px; font-weight: 600; }
+#stats { display: flex; gap: 8px; margin-left: auto; flex-wrap: wrap; }
+.pill {
+  padding: 3px 10px; border-radius: 20px; font-size: 12px; font-weight: 600;
+  background: #21262d; border: 1px solid #30363d; color: #8b949e;
+}
+.pill.p-vessels { border-color: #388bfd; color: #79c0ff; }
+.pill.p-pings   { border-color: #3fb950; color: #56d364; }
+.pill.p-gaps    { border-color: #d29922; color: #e3b341; }
+.pill.p-jumps   { border-color: #f85149; color: #ff7b72; }
+
+/* ── Main ────────────────────────────────────────────────── */
+#main { display: flex; flex: 1; overflow: hidden; }
+
+/* ── Map ─────────────────────────────────────────────────── */
+#map-wrap { flex: 7; position: relative; }
+#map { width: 100%; height: 100%; }
+#loading-overlay {
+  position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%);
+  background: rgba(0,0,0,.85); color: #58a6ff; padding: 14px 22px;
+  border-radius: 8px; border: 1px solid #30363d; font-size: 14px;
+  display: none; z-index: 2000;
+}
+
+/* ── Sidebar ─────────────────────────────────────────────── */
+#sidebar {
+  flex: 3; min-width: 255px; max-width: 340px;
+  overflow-y: auto; background: #161b22;
+  border-left: 1px solid #30363d; display: flex; flex-direction: column;
+}
+.s-sec { padding: 10px 12px; border-bottom: 1px solid #21262d; }
+.s-sec h3 {
+  font-size: 10px; letter-spacing: 1px; text-transform: uppercase;
+  color: #484f58; margin-bottom: 8px;
+}
+select {
+  width: 100%; padding: 5px 8px; background: #21262d;
+  border: 1px solid #30363d; color: #c9d1d9; border-radius: 5px; font-size: 12px;
+  cursor: pointer;
+}
+select:focus { outline: none; border-color: #388bfd; }
+
+/* vessel list */
+#vessel-list { display: flex; flex-direction: column; gap: 2px; max-height: 190px; overflow-y: auto; }
+.v-item {
+  display: flex; align-items: center; gap: 8px; padding: 5px 6px;
+  border-radius: 5px; cursor: pointer; font-size: 12px; transition: background .12s;
+}
+.v-item:hover { background: #21262d; }
+.v-item.active { background: #1f3a5f; border: 1px solid #388bfd; }
+.v-dot { width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0; }
+.v-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #c9d1d9; }
+.v-mmsi { font-size: 10px; color: #484f58; }
+.qbadge {
+  font-size: 9px; padding: 1px 5px; border-radius: 8px; font-weight: 700; flex-shrink: 0;
+}
+.qb-clean { background: #033a16; color: #56d364; border: 1px solid #3fb950; }
+.qb-warn  { background: #3d2300; color: #e3b341; border: 1px solid #d29922; }
+.qb-bad   { background: #3d0c09; color: #ff7b72; border: 1px solid #f85149; }
+
+/* quality cards */
+#quality-cards { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+.qcard {
+  background: #0d1117; border: 1px solid #21262d; border-radius: 6px;
+  padding: 7px 8px; text-align: center;
+}
+.qcard .qv { font-size: 18px; font-weight: 700; color: #58a6ff; }
+.qcard .ql { font-size: 10px; color: #484f58; margin-top: 2px; }
+
+/* issues */
+#issues-list { max-height: 165px; overflow-y: auto; display: flex; flex-direction: column; gap: 2px; }
+.issue {
+  font-size: 10px; padding: 4px 7px; border-radius: 3px; cursor: pointer;
+  display: flex; align-items: flex-start; gap: 5px; line-height: 1.4;
+}
+.issue.gap  { background: #2d1f00; border-left: 3px solid #d29922; }
+.issue.jump { background: #2d0f0d; border-left: 3px solid #f85149; }
+.issue:hover { filter: brightness(1.2); }
+.issue-icon { font-size: 10px; flex-shrink: 0; margin-top: 1px; }
+
+/* vessel detail */
+.drow {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 4px 0; border-bottom: 1px solid #21262d; font-size: 12px;
+}
+.drow:last-child { border: none; }
+.dlabel { color: #484f58; }
+.dval { color: #c9d1d9; font-weight: 500; text-align: right; }
+
+/* ── Bottom ──────────────────────────────────────────────── */
+#bottom {
+  display: flex; align-items: center; gap: 14px; padding: 8px 16px;
+  background: #161b22; border-top: 1px solid #30363d;
+  flex-shrink: 0; height: 78px;
+}
+#timeline-wrap { display: flex; align-items: center; gap: 8px; flex: 1; min-width: 0; }
+#btn-play {
+  background: #1f6feb; border: none; color: #fff;
+  width: 30px; height: 30px; border-radius: 50%; cursor: pointer; font-size: 13px;
+  display: flex; align-items: center; justify-content: center; flex-shrink: 0;
+  transition: background .15s;
+}
+#btn-play:hover { background: #388bfd; }
+#speed-sel {
+  width: 58px; padding: 4px 5px; background: #21262d;
+  border: 1px solid #30363d; color: #c9d1d9; border-radius: 4px; font-size: 11px;
+}
+#timeline {
+  flex: 1; accent-color: #388bfd; cursor: pointer; height: 4px;
+}
+#time-display { font-size: 11px; color: #8b949e; white-space: nowrap; min-width: 130px; text-align: right; }
+#dist-chart-wrap { width: 270px; height: 58px; flex-shrink: 0; }
+#dist-chart { width: 100%; height: 100%; }
+
+/* time range inputs */
+input[type="datetime-local"] {
+  flex: 1; padding: 4px 6px; background: #21262d;
+  border: 1px solid #30363d; color: #c9d1d9; border-radius: 4px;
+  font-size: 11px; cursor: pointer; color-scheme: dark; min-width: 0;
+}
+input[type="datetime-local"]:focus { outline: none; border-color: #388bfd; }
+.range-row { display: flex; align-items: center; gap: 5px; }
+.range-label { color: #484f58; font-size: 10px; width: 24px; flex-shrink: 0; }
+.btn-row { display: flex; gap: 5px; margin-top: 4px; }
+.btn-primary {
+  flex: 1; padding: 5px 8px; background: #1f6feb; border: none;
+  color: #fff; border-radius: 4px; font-size: 11px; cursor: pointer; transition: background .12s;
+}
+.btn-primary:hover { background: #388bfd; }
+.btn-secondary {
+  padding: 5px 10px; background: #21262d; border: 1px solid #30363d;
+  color: #8b949e; border-radius: 4px; font-size: 11px; cursor: pointer; transition: background .12s;
+}
+.btn-secondary:hover { background: #30363d; color: #c9d1d9; }
+
+/* Leaflet dark popup */
+.leaflet-popup-content-wrapper { background: #161b22; color: #c9d1d9; border: 1px solid #30363d; border-radius: 6px; }
+.leaflet-popup-tip { background: #161b22; }
+.leaflet-popup-content { margin: 10px 12px; font-size: 12px; line-height: 1.6; }
+.leaflet-tooltip { background: #161b22; border: 1px solid #30363d; color: #c9d1d9; font-size: 11px; }
+
+/* scrollbar */
+::-webkit-scrollbar { width: 4px; }
+::-webkit-scrollbar-track { background: #0d1117; }
+::-webkit-scrollbar-thumb { background: #30363d; border-radius: 2px; }
+</style>
+</head>
+<body>
+
+<div id="topbar">
+  <h1>⚓ AIS Trajectory Dashboard</h1>
+  <div id="stats">
+    <span class="pill p-vessels" id="stat-vessels">Vessels: –</span>
+    <span class="pill p-pings"   id="stat-pings">Pings: –</span>
+    <span class="pill p-gaps"    id="stat-gaps">Gaps: –</span>
+    <span class="pill p-jumps"   id="stat-jumps">Jumps: –</span>
+  </div>
+</div>
+
+<div id="main">
+  <div id="map-wrap">
+    <div id="map"></div>
+    <div id="loading-overlay">Loading vessel tracks…</div>
+  </div>
+
+  <div id="sidebar">
+    <div class="s-sec">
+      <h3>Database</h3>
+      <select id="db-sel"><option value="">All databases</option></select>
+    </div>
+
+    <div class="s-sec">
+      <h3>Time Range</h3>
+      <div style="display:flex;flex-direction:column;gap:5px">
+        <div class="range-row">
+          <span class="range-label">From</span>
+          <input type="datetime-local" id="from-dt">
+        </div>
+        <div class="range-row">
+          <span class="range-label">To</span>
+          <input type="datetime-local" id="to-dt">
+        </div>
+        <div class="btn-row">
+          <button class="btn-primary" id="btn-apply-range">Apply</button>
+          <button class="btn-secondary" id="btn-reset-range">Reset</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="s-sec">
+      <h3>Vessels</h3>
+      <div id="vessel-list"><div style="color:#484f58;font-size:12px">Loading…</div></div>
+    </div>
+
+    <div class="s-sec">
+      <h3>Data Quality</h3>
+      <div id="quality-cards">
+        <div class="qcard"><div class="qv" id="qv-clean">–</div><div class="ql">Clean %</div></div>
+        <div class="qcard"><div class="qv" id="qv-interval">–</div><div class="ql">Avg Interval</div></div>
+        <div class="qcard"><div class="qv" id="qv-gaps">–</div><div class="ql">Gaps</div></div>
+        <div class="qcard"><div class="qv" id="qv-jumps">–</div><div class="ql">Jumps</div></div>
+      </div>
+    </div>
+
+    <div class="s-sec">
+      <h3>Issues</h3>
+      <div id="issues-list"><div style="color:#484f58;font-size:12px">Loading…</div></div>
+    </div>
+
+    <div class="s-sec" id="vessel-detail" style="display:none">
+      <h3>Selected Vessel</h3>
+      <div id="vessel-detail-body"></div>
+    </div>
+  </div>
+</div>
+
+<div id="bottom">
+  <div id="timeline-wrap">
+    <button id="btn-play" title="Play / Pause">▶</button>
+    <select id="speed-sel">
+      <option value="1">1×</option>
+      <option value="5">5×</option>
+      <option value="20">20×</option>
+    </select>
+    <input type="range" id="timeline" min="0" max="0" value="0" disabled>
+    <span id="time-display">No vessel selected</span>
+  </div>
+  <div id="dist-chart-wrap">
+    <canvas id="dist-chart"></canvas>
+  </div>
+</div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script>
+// ── Constants ────────────────────────────────────────────────────────────
+const HYDROPHONE = [32.843153, 34.971938];
+const COLORS = [
+  '#58a6ff','#f0883e','#3fb950','#f85149','#bc8cff',
+  '#39d353','#ff9800','#ec4899','#00bcd4','#8b5cf6',
+  '#fbbf24','#34d399','#60a5fa','#fb7185','#a3e635',
+];
+
+// ── State ────────────────────────────────────────────────────────────────
+let vessels = [];
+let quality = { gaps: [], jumps: [] };
+let tracks  = {};      // mmsi → position array
+let polylines = {};    // mmsi → L.polyline
+let selectedMMSI = null;
+let currentTrack = [];
+let playIdx = 0;
+let isPlaying = false;
+let rafId = null;
+let playAnchorReal = 0;
+let playAnchorTrack = 0;
+let movingMarker = null;
+let gapMarkers   = [];
+let jumpMarkers  = [];
+let vesselMarkers = {};   // mmsi → last-position L.marker
+
+// ── Map ──────────────────────────────────────────────────────────────────
+const map = L.map('map', { preferCanvas: true }).setView(HYDROPHONE, 11);
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+  attribution: '© OpenStreetMap contributors', maxZoom: 18,
+}).addTo(map);
+
+// Hydrophone fixed marker (red)
+L.marker(HYDROPHONE, {
+  icon: L.divIcon({
+    className: '',
+    html: '<div style="width:14px;height:14px;background:#f85149;border:2px solid #fff;border-radius:50%;box-shadow:0 0 8px #f85149"></div>',
+    iconSize: [14,14], iconAnchor: [7,7],
+  }),
+}).addTo(map).bindPopup('<b>Hydrophone</b><br>32.843153°N, 34.971938°E');
+
+// Moving vessel marker (white dot, blue glow)
+const movingIcon = L.divIcon({
+  className: '',
+  html: '<div style="width:11px;height:11px;background:#fff;border:2px solid #58a6ff;border-radius:50%;box-shadow:0 0 6px #58a6ff"></div>',
+  iconSize: [11,11], iconAnchor: [5,5],
+});
+
+// ── Chart ────────────────────────────────────────────────────────────────
+const distChart = new Chart(document.getElementById('dist-chart'), {
+  type: 'line',
+  data: {
+    labels: [],
+    datasets: [{
+      label: 'Distance (km)',
+      data: [],
+      borderColor: '#58a6ff',
+      borderWidth: 1.5,
+      pointRadius: 0,
+      tension: 0.3,
+      fill: { target: 'origin', above: 'rgba(88,166,255,0.08)' },
+    }],
+  },
+  options: {
+    responsive: true, maintainAspectRatio: false, animation: false,
+    plugins: { legend: { display: false } },
+    scales: {
+      x: { display: false },
+      y: {
+        ticks: { color: '#484f58', font: { size: 9 } },
+        grid: { color: '#21262d' },
+      },
+    },
+  },
+});
+
+// ── Helpers ──────────────────────────────────────────────────────────────
+function colorFor(mmsi) {
+  const i = vessels.findIndex(v => String(v.mmsi) === String(mmsi));
+  return COLORS[(i >= 0 ? i : 0) % COLORS.length];
+}
+
+function vesselQuality(mmsi) {
+  const s = String(mmsi);
+  if (quality.jumps.some(j => String(j.mmsi) === s)) return 'bad';
+  if (quality.gaps.some(g  => String(g.mmsi) === s)) return 'warn';
+  return 'clean';
+}
+
+function fmtDuration(sec) {
+  if (sec < 60)   return `${sec}s`;
+  if (sec < 3600) return `${Math.round(sec / 60)}m`;
+  return `${(sec / 3600).toFixed(1)}h`;
+}
+
+function fmtTs(ts) {
+  if (!ts) return '–';
+  return ts.replace(' UTC', '').slice(5); // "MM-DD HH:MM:SS"
+}
+
+function fmtTsFull(ts) {
+  return ts ? ts.replace(' UTC', '') : '–';
+}
+
+function parseTs(ts) {
+  return new Date(ts.replace(' UTC', 'Z').replace(' ', 'T')).getTime();
+}
+
+function showLoading(show) {
+  document.getElementById('loading-overlay').style.display = show ? 'block' : 'none';
+}
+
+function dtToApiTs(dtVal) {
+  if (!dtVal) return null;
+  return dtVal.replace('T', ' ') + ':00 UTC';
+}
+
+function apiTsToDt(ts) {
+  if (!ts) return '';
+  return ts.replace(' UTC', '').replace(' ', 'T').slice(0, 16);
+}
+
+function autoPopulateRange() {
+  const fromEl = document.getElementById('from-dt');
+  const toEl   = document.getElementById('to-dt');
+  if (fromEl.value || toEl.value) return;
+  const allTs = Object.values(tracks).flatMap(t => t.map(p => p.timestamp)).sort();
+  if (!allTs.length) return;
+  fromEl.value = apiTsToDt(allTs[0]);
+  toEl.value   = apiTsToDt(allTs[allTs.length - 1]);
+}
+
+// ── Data ─────────────────────────────────────────────────────────────────
+async function loadData() {
+  showLoading(true);
+  stopPlayback();
+  clearQualityMarkers();
+  if (movingMarker) { map.removeLayer(movingMarker); movingMarker = null; }
+  // Clear vessel markers
+  Object.values(vesselMarkers).forEach(m => map.removeLayer(m));
+  vesselMarkers = {};
+  document.getElementById('vessel-detail').style.display = 'none';
+
+  const db   = document.getElementById('db-sel').value;
+  const from = dtToApiTs(document.getElementById('from-dt').value);
+  const to   = dtToApiTs(document.getElementById('to-dt').value);
+
+  function buildQs(extra = {}) {
+    const p = {};
+    if (db)   p.db   = db;
+    if (from) p.from = from;
+    if (to)   p.to   = to;
+    Object.assign(p, extra);
+    const s = new URLSearchParams(p).toString();
+    return s ? '?' + s : '';
+  }
+
+  try {
+    const [vData, qData] = await Promise.all([
+      fetch(`/api/vessels${buildQs()}`).then(r => r.json()),
+      fetch(`/api/quality${buildQs()}`).then(r => r.json()),
+    ]);
+    vessels = vData;
+    quality = qData;
+
+    updateStats();
+    renderVesselList();
+    renderIssues();
+
+    // Remove old polylines
+    Object.values(polylines).forEach(pl => map.removeLayer(pl));
+    polylines = {};
+    tracks = {};
+
+    // Load all vessel tracks in parallel (with optional time range)
+    await Promise.all(vessels.map(v => loadVesselTrack(v.mmsi, db, from, to)));
+
+    renderQualityCards();
+
+    // Fit map to all data
+    const allPts = Object.values(tracks).flatMap(t => t.map(p => [p.lat, p.lon]));
+    if (allPts.length) map.fitBounds(L.latLngBounds(allPts), { padding: [30, 30] });
+
+  } catch (e) {
+    console.error('Load error:', e);
+  } finally {
+    showLoading(false);
+  }
+}
+
+async function loadVesselTrack(mmsi, db, from, to) {
+  let qs = `?mmsi=${mmsi}`;
+  if (db)   qs += `&db=${encodeURIComponent(db)}`;
+  if (from) qs += `&from=${encodeURIComponent(from)}`;
+  if (to)   qs += `&to=${encodeURIComponent(to)}`;
+  try {
+    const data = await fetch(`/api/tracks${qs}`).then(r => r.json());
+    tracks[mmsi] = data;
+    if (data.length === 0) return;
+
+    // Polyline
+    if (data.length > 1) {
+      const color = colorFor(mmsi);
+      const pl = L.polyline(data.map(p => [p.lat, p.lon]), { color, weight: 2, opacity: 0.65 })
+        .addTo(map)
+        .on('click', () => selectVessel(mmsi));
+      polylines[mmsi] = pl;
+    }
+
+    // Clickable marker at last known position
+    const last  = data[data.length - 1];
+    const color = colorFor(mmsi);
+    const v     = vessels.find(v => String(v.mmsi) === String(mmsi));
+    const label = v ? (v.name || String(mmsi)) : String(mmsi);
+    const icon  = L.divIcon({
+      className: '',
+      html: `<div style="width:11px;height:11px;background:${color};border:2px solid #fff;border-radius:50%;box-shadow:0 0 5px ${color};cursor:pointer"></div>`,
+      iconSize: [11,11], iconAnchor: [5,5],
+    });
+    const vm = L.marker([last.lat, last.lon], { icon, zIndexOffset: 500 })
+      .addTo(map)
+      .bindTooltip(label, { permanent: false, direction: 'top', offset: [0,-10] })
+      .on('click', () => selectVessel(mmsi));
+    vesselMarkers[mmsi] = vm;
+  } catch (e) {}
+}
+
+// ── Render ────────────────────────────────────────────────────────────────
+function updateStats() {
+  const totalPings = vessels.reduce((s, v) => s + v.ping_count, 0);
+  document.getElementById('stat-vessels').textContent = `Vessels: ${vessels.length}`;
+  document.getElementById('stat-pings').textContent   = `Pings: ${totalPings.toLocaleString()}`;
+  document.getElementById('stat-gaps').textContent    = `Gaps: ${quality.gaps.length}`;
+  document.getElementById('stat-jumps').textContent   = `Jumps: ${quality.jumps.length}`;
+}
+
+function renderVesselList() {
+  const el = document.getElementById('vessel-list');
+  el.innerHTML = '';
+  if (!vessels.length) {
+    el.innerHTML = '<div style="color:#484f58;font-size:12px">No vessels found</div>';
+    return;
+  }
+  vessels.forEach((v, i) => {
+    const q = vesselQuality(v.mmsi);
+    const badgeText = { clean: 'OK', warn: 'GAP', bad: 'JUMP' }[q];
+    const div = document.createElement('div');
+    div.className = 'v-item' + (String(v.mmsi) === String(selectedMMSI) ? ' active' : '');
+    div.innerHTML = `
+      <div class="v-dot" style="background:${COLORS[i % COLORS.length]}"></div>
+      <span class="v-name">${v.name || '—'}</span>
+      <span class="v-mmsi">${v.mmsi}</span>
+      <span class="qbadge qb-${q}">${badgeText}</span>
+    `;
+    div.addEventListener('click', () => selectVessel(v.mmsi));
+    el.appendChild(div);
+  });
+}
+
+function renderQualityCards() {
+  const total = vessels.length;
+  const withIssues = new Set([
+    ...quality.gaps.map(g => g.mmsi),
+    ...quality.jumps.map(j => j.mmsi),
+  ]).size;
+  const cleanPct = total > 0 ? Math.round(((total - withIssues) / total) * 100) : 100;
+
+  let sumInterval = 0, cntInterval = 0;
+  Object.values(tracks).forEach(track => {
+    for (let i = 1; i < track.length; i++) {
+      const dt = (parseTs(track[i].timestamp) - parseTs(track[i-1].timestamp)) / 1000;
+      if (dt > 0 && dt < 3600) { sumInterval += dt; cntInterval++; }
+    }
+  });
+  const avgInterval = cntInterval > 0 ? Math.round(sumInterval / cntInterval) : 0;
+
+  document.getElementById('qv-clean').textContent    = `${cleanPct}%`;
+  document.getElementById('qv-interval').textContent = avgInterval ? fmtDuration(avgInterval) : '–';
+  document.getElementById('qv-gaps').textContent     = quality.gaps.length;
+  document.getElementById('qv-jumps').textContent    = quality.jumps.length;
+}
+
+function renderIssues() {
+  const el = document.getElementById('issues-list');
+  el.innerHTML = '';
+  const all = [
+    ...quality.gaps.map(g  => ({ type: 'gap',  sortKey: g.from, ...g })),
+    ...quality.jumps.map(j => ({ type: 'jump', sortKey: j.timestamp, ...j })),
+  ].sort((a, b) => a.sortKey.localeCompare(b.sortKey));
+
+  if (!all.length) {
+    el.innerHTML = '<div style="color:#484f58;font-size:12px">No issues detected</div>';
+    return;
+  }
+  all.forEach(issue => {
+    const div = document.createElement('div');
+    div.className = `issue ${issue.type}`;
+    if (issue.type === 'gap') {
+      div.innerHTML = `<span class="issue-icon">⏸</span><span>${issue.ship_name || issue.mmsi} — gap ${fmtDuration(issue.duration_sec)} at ${fmtTs(issue.from)}</span>`;
+    } else {
+      div.innerHTML = `<span class="issue-icon">⚡</span><span>${issue.ship_name || issue.mmsi} — ${issue.speed_knots} kn at ${fmtTs(issue.timestamp)}</span>`;
+    }
+    div.addEventListener('click', () => {
+      selectVessel(issue.mmsi);
+      if (issue.lat && issue.lon) map.setView([parseFloat(issue.lat), parseFloat(issue.lon)], 14);
+    });
+    el.appendChild(div);
+  });
+}
+
+function renderVesselDetail(mmsi) {
+  const v   = vessels.find(v => String(v.mmsi) === String(mmsi));
+  const sec = document.getElementById('vessel-detail');
+  const bod = document.getElementById('vessel-detail-body');
+  if (!v) { sec.style.display = 'none'; return; }
+  sec.style.display = 'block';
+
+  const track  = tracks[mmsi] || [];
+  const lastPt = track[track.length - 1];
+  const q = vesselQuality(mmsi);
+
+  bod.innerHTML = `
+    <div class="drow"><span class="dlabel">Name</span><span class="dval">${v.name || '—'}</span></div>
+    <div class="drow"><span class="dlabel">MMSI</span><span class="dval">${v.mmsi}</span></div>
+    <div class="drow"><span class="dlabel">Type</span><span class="dval">${v.type || '—'}</span></div>
+    <div class="drow"><span class="dlabel">Pings</span><span class="dval">${v.ping_count.toLocaleString()}</span></div>
+    ${lastPt ? `
+    <div class="drow"><span class="dlabel">Last seen</span><span class="dval">${fmtTs(lastPt.timestamp)}</span></div>
+    <div class="drow"><span class="dlabel">Distance</span><span class="dval">${lastPt.distance_km} km</span></div>
+    <div class="drow"><span class="dlabel">Bearing</span><span class="dval">${lastPt.bearing_deg}°</span></div>
+    ` : ''}
+    <div class="drow"><span class="dlabel">Quality</span><span class="dval"><span class="qbadge qb-${q}">${q.toUpperCase()}</span></span></div>
+  `;
+}
+
+// ── Selection ─────────────────────────────────────────────────────────────
+function selectVessel(mmsi) {
+  stopPlayback();
+  selectedMMSI = mmsi;
+  currentTrack = tracks[mmsi] || [];
+  playIdx = 0;
+
+  // Dim all, highlight selected
+  Object.entries(polylines).forEach(([m, pl]) => {
+    const sel = String(m) === String(mmsi);
+    pl.setStyle({ opacity: sel ? 1 : 0.2, weight: sel ? 3 : 1.5 });
+    if (sel) pl.bringToFront();
+  });
+
+  // Fit to selected track
+  if (currentTrack.length > 0) {
+    map.fitBounds(L.latLngBounds(currentTrack.map(p => [p.lat, p.lon])), { padding: [40,40] });
+  }
+
+  clearQualityMarkers();
+
+  // Gap markers (orange)
+  quality.gaps.filter(g => String(g.mmsi) === String(mmsi)).forEach(gap => {
+    if (!gap.lat || !gap.lon) return;
+    const m = L.circleMarker([parseFloat(gap.lat), parseFloat(gap.lon)], {
+      radius: 9, color: '#d29922', fillColor: '#d29922', fillOpacity: 0.35, weight: 2,
+    }).addTo(map).bindPopup(
+      `<b>GAP</b><br>${gap.ship_name || mmsi}<br>Duration: ${fmtDuration(gap.duration_sec)}<br>${fmtTs(gap.from)} → ${fmtTs(gap.to)}`
+    );
+    gapMarkers.push(m);
+  });
+
+  // Jump markers (red)
+  quality.jumps.filter(j => String(j.mmsi) === String(mmsi)).forEach(jump => {
+    if (!jump.lat || !jump.lon) return;
+    const m = L.circleMarker([parseFloat(jump.lat), parseFloat(jump.lon)], {
+      radius: 9, color: '#f85149', fillColor: '#f85149', fillOpacity: 0.35, weight: 2,
+    }).addTo(map).bindPopup(
+      `<b>JUMP</b><br>${jump.ship_name || mmsi}<br>Speed: ${jump.speed_knots} kn<br>${fmtTs(jump.timestamp)}`
+    );
+    jumpMarkers.push(m);
+  });
+
+  // Moving marker at first position
+  if (movingMarker) map.removeLayer(movingMarker);
+  if (currentTrack.length > 0) {
+    movingMarker = L.marker([currentTrack[0].lat, currentTrack[0].lon], { icon: movingIcon, zIndexOffset: 1000 }).addTo(map);
+  }
+
+  // Timeline scrubber
+  const slider = document.getElementById('timeline');
+  slider.max = Math.max(0, currentTrack.length - 1);
+  slider.value = 0;
+  slider.disabled = currentTrack.length === 0;
+  updateTimeLabel(0);
+
+  // Distance chart
+  distChart.data.labels   = currentTrack.map(p => fmtTs(p.timestamp));
+  distChart.data.datasets[0].data = currentTrack.map(p => p.distance_km);
+  distChart.update();
+
+  renderVesselList();
+  renderVesselDetail(mmsi);
+}
+
+function clearQualityMarkers() {
+  gapMarkers.forEach(m  => map.removeLayer(m));
+  jumpMarkers.forEach(m => map.removeLayer(m));
+  gapMarkers = []; jumpMarkers = [];
+}
+
+function updateTimeLabel(idx) {
+  const pt = currentTrack[Math.min(idx, currentTrack.length - 1)];
+  document.getElementById('time-display').textContent = pt ? fmtTsFull(pt.timestamp) : '–';
+  document.getElementById('timeline').value = idx;
+  if (pt && movingMarker) movingMarker.setLatLng([pt.lat, pt.lon]);
+}
+
+// ── Playback ──────────────────────────────────────────────────────────────
+function startPlayback() {
+  if (!currentTrack.length) return;
+  if (playIdx >= currentTrack.length - 1) playIdx = 0;
+
+  isPlaying = true;
+  document.getElementById('btn-play').textContent = '⏸';
+
+  playAnchorReal  = performance.now();
+  playAnchorTrack = parseTs(currentTrack[playIdx].timestamp);
+
+  function animate(now) {
+    if (!isPlaying) return;
+    const speed      = parseInt(document.getElementById('speed-sel').value);
+    const realElapsed = now - playAnchorReal;            // ms
+    const trackTarget = playAnchorTrack + realElapsed * speed; // ms track time
+
+    // Advance playIdx
+    while (playIdx < currentTrack.length - 1 &&
+           parseTs(currentTrack[playIdx + 1].timestamp) <= trackTarget) {
+      playIdx++;
+    }
+    updateTimeLabel(playIdx);
+
+    if (playIdx >= currentTrack.length - 1) { stopPlayback(); return; }
+    rafId = requestAnimationFrame(animate);
+  }
+
+  rafId = requestAnimationFrame(animate);
+}
+
+function stopPlayback() {
+  if (rafId !== null) { cancelAnimationFrame(rafId); rafId = null; }
+  isPlaying = false;
+  document.getElementById('btn-play').textContent = '▶';
+}
+
+// ── Events ────────────────────────────────────────────────────────────────
+document.getElementById('btn-play').addEventListener('click', () => {
+  if (isPlaying) stopPlayback(); else startPlayback();
+});
+
+document.getElementById('speed-sel').addEventListener('change', () => {
+  if (isPlaying) {
+    // Re-anchor at current position so speed change doesn't jump
+    playAnchorReal  = performance.now();
+    playAnchorTrack = parseTs(currentTrack[playIdx].timestamp);
+  }
+});
+
+document.getElementById('timeline').addEventListener('input', e => {
+  stopPlayback();
+  playIdx = parseInt(e.target.value);
+  updateTimeLabel(playIdx);
+});
+
+document.getElementById('db-sel').addEventListener('change', () => {
+  selectedMMSI = null;
+  loadData();
+});
+
+document.getElementById('btn-apply-range').addEventListener('click', () => {
+  selectedMMSI = null;
+  loadData();
+});
+
+document.getElementById('btn-reset-range').addEventListener('click', () => {
+  document.getElementById('from-dt').value = '';
+  document.getElementById('to-dt').value   = '';
+  selectedMMSI = null;
+  loadData();
+});
+
+// ── Init ──────────────────────────────────────────────────────────────────
+async function init() {
+  try {
+    const files = await fetch('/api/files').then(r => r.json());
+    const sel = document.getElementById('db-sel');
+    files.forEach(f => {
+      const opt = document.createElement('option');
+      opt.value = f; opt.textContent = f;
+      sel.appendChild(opt);
+    });
+    // Default window: 03.06.26 11:00–19:00
+    document.getElementById('from-dt').value = '2026-06-03T11:00';
+    document.getElementById('to-dt').value   = '2026-06-03T19:00';
+    await loadData();
+  } catch (e) {
+    document.getElementById('loading-overlay').textContent = 'Could not reach server. Is dashboard.py running?';
+    document.getElementById('loading-overlay').style.display = 'block';
+  }
+}
+
+init();
+</script>
+</body>
+</html>
