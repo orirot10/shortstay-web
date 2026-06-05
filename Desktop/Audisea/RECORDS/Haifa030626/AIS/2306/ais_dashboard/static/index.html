@@ -77,6 +77,13 @@ select:focus { outline: none; border-color: #388bfd; }
 .qb-clean { background: #033a16; color: #56d364; border: 1px solid #3fb950; }
 .qb-warn  { background: #3d2300; color: #e3b341; border: 1px solid #d29922; }
 .qb-bad   { background: #3d0c09; color: #ff7b72; border: 1px solid #f85149; }
+.dist-chip {
+  font-size: 10px; padding: 1px 6px; border-radius: 8px; font-weight: 600;
+  flex-shrink: 0; white-space: nowrap;
+}
+.dist-chip.close  { background: #033a16; color: #56d364; border: 1px solid #3fb950; }
+.dist-chip.medium { background: #1a2535; color: #79c0ff; border: 1px solid #388bfd; }
+.dist-chip.far    { background: #1c1c2e; color: #8b949e; border: 1px solid #30363d; }
 
 /* quality cards */
 #quality-cards { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
@@ -208,7 +215,14 @@ input[type="datetime-local"]:focus { outline: none; border-color: #388bfd; }
     </div>
 
     <div class="s-sec">
-      <h3>Vessels</h3>
+      <div style="display:flex;align-items:center;gap:6px;margin-bottom:8px">
+        <h3 style="margin:0">Vessels</h3>
+        <button id="btn-sort-dist" title="Sort by distance from hydrophone"
+          style="margin-left:auto;padding:2px 8px;background:#21262d;border:1px solid #30363d;
+                 color:#484f58;border-radius:4px;font-size:10px;cursor:pointer;">
+          sort: pings
+        </button>
+      </div>
       <div id="vessel-list"><div style="color:#484f58;font-size:12px">Loading…</div></div>
     </div>
 
@@ -277,6 +291,7 @@ let movingMarker = null;
 let gapMarkers   = [];
 let jumpMarkers  = [];
 let vesselMarkers = {};   // mmsi → last-position L.marker
+let sortByDist    = false;
 
 // ── Map ──────────────────────────────────────────────────────────────────
 const map = L.map('map', { preferCanvas: true }).setView(HYDROPHONE, 11);
@@ -360,6 +375,20 @@ function parseTs(ts) {
   return new Date(ts.replace(' UTC', 'Z').replace(' ', 'T')).getTime();
 }
 
+function lastDist(mmsi) {
+  const t = tracks[mmsi];
+  if (!t || !t.length) return null;
+  const last = [...t].reverse().find(p => p.distance_km != null);
+  return last ? last.distance_km : null;
+}
+
+function distChipClass(km) {
+  if (km == null) return 'far';
+  if (km < 5)  return 'close';
+  if (km < 10) return 'medium';
+  return 'far';
+}
+
 function showLoading(show) {
   document.getElementById('loading-overlay').style.display = show ? 'block' : 'none';
 }
@@ -430,6 +459,7 @@ async function loadData() {
     await Promise.all(vessels.map(v => loadVesselTrack(v.mmsi, db, from, to)));
 
     renderQualityCards();
+    renderVesselList();   // re-render now that distances are available
 
     // Fit map to all data
     const allPts = Object.values(tracks).flatMap(t => t.map(p => [p.lat, p.lon]));
@@ -471,9 +501,12 @@ async function loadVesselTrack(mmsi, db, from, to) {
       html: `<div style="width:11px;height:11px;background:${color};border:2px solid #fff;border-radius:50%;box-shadow:0 0 5px ${color};cursor:pointer"></div>`,
       iconSize: [11,11], iconAnchor: [5,5],
     });
+    const distKm = last.distance_km != null ? last.distance_km.toFixed(2) + ' km' : '–';
     const vm = L.marker([last.lat, last.lon], { icon, zIndexOffset: 500 })
       .addTo(map)
-      .bindTooltip(label, { permanent: false, direction: 'top', offset: [0,-10] })
+      .bindTooltip(`<b>${label}</b><br>${distKm} from hydrophone`, {
+        permanent: false, direction: 'top', offset: [0,-10],
+      })
       .on('click', () => selectVessel(mmsi));
     vesselMarkers[mmsi] = vm;
   } catch (e) {}
@@ -495,15 +528,34 @@ function renderVesselList() {
     el.innerHTML = '<div style="color:#484f58;font-size:12px">No vessels found</div>';
     return;
   }
-  vessels.forEach((v, i) => {
-    const q = vesselQuality(v.mmsi);
+
+  // Build list with distances, then optionally sort
+  let list = vessels.map((v, i) => ({
+    ...v, _origIdx: i, _dist: lastDist(v.mmsi),
+  }));
+  if (sortByDist) {
+    list.sort((a, b) => {
+      if (a._dist == null && b._dist == null) return 0;
+      if (a._dist == null) return 1;
+      if (b._dist == null) return -1;
+      return a._dist - b._dist;
+    });
+  }
+
+  list.forEach(v => {
+    const i   = v._origIdx;
+    const q   = vesselQuality(v.mmsi);
     const badgeText = { clean: 'OK', warn: 'GAP', bad: 'JUMP' }[q];
+    const km  = v._dist;
+    const distLabel = km != null ? km.toFixed(2) + ' km' : '–';
+    const chipCls   = distChipClass(km);
+
     const div = document.createElement('div');
     div.className = 'v-item' + (String(v.mmsi) === String(selectedMMSI) ? ' active' : '');
     div.innerHTML = `
       <div class="v-dot" style="background:${COLORS[i % COLORS.length]}"></div>
       <span class="v-name">${v.name || '—'}</span>
-      <span class="v-mmsi">${v.mmsi}</span>
+      <span class="dist-chip ${chipCls}">${distLabel}</span>
       <span class="qbadge qb-${q}">${badgeText}</span>
     `;
     div.addEventListener('click', () => selectVessel(v.mmsi));
@@ -724,6 +776,14 @@ document.getElementById('timeline').addEventListener('input', e => {
 document.getElementById('db-sel').addEventListener('change', () => {
   selectedMMSI = null;
   loadData();
+});
+
+document.getElementById('btn-sort-dist').addEventListener('click', function() {
+  sortByDist = !sortByDist;
+  this.textContent = sortByDist ? 'sort: distance' : 'sort: pings';
+  this.style.color = sortByDist ? '#58a6ff' : '#484f58';
+  this.style.borderColor = sortByDist ? '#388bfd' : '#30363d';
+  renderVesselList();
 });
 
 document.getElementById('btn-apply-range').addEventListener('click', () => {
