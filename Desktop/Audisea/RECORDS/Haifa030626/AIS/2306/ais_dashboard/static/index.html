@@ -17,6 +17,7 @@ body {
 #topbar {
   display: flex; align-items: center; gap: 14px; padding: 8px 16px;
   background: #161b22; border-bottom: 1px solid #30363d; flex-shrink: 0; height: 48px;
+  flex-wrap: nowrap;
 }
 #topbar h1 { font-size: 16px; color: #58a6ff; letter-spacing: 0.4px; font-weight: 600; }
 #stats { display: flex; gap: 8px; margin-left: auto; flex-wrap: wrap; }
@@ -166,6 +167,30 @@ input[type="datetime-local"]:focus { outline: none; border-color: #388bfd; }
 .leaflet-popup-content { margin: 10px 12px; font-size: 12px; line-height: 1.6; }
 .leaflet-tooltip { background: #161b22; border: 1px solid #30363d; color: #c9d1d9; font-size: 11px; }
 
+/* help panel */
+#help-panel {
+  display: none; padding: 12px 14px; border-bottom: 2px solid #388bfd;
+  background: #0d1a2e; flex-shrink: 0;
+}
+#help-panel h4 {
+  font-size: 11px; letter-spacing: 0.8px; text-transform: uppercase;
+  color: #388bfd; margin-bottom: 10px;
+}
+.help-block { margin-bottom: 12px; }
+.help-block:last-child { margin-bottom: 0; }
+.help-title {
+  display: flex; align-items: center; gap: 6px;
+  font-size: 12px; font-weight: 700; color: #e6edf3; margin-bottom: 4px;
+}
+.help-dot {
+  width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0;
+}
+.help-body { font-size: 11px; color: #8b949e; line-height: 1.6; padding-left: 16px; }
+.help-body b { color: #c9d1d9; }
+.help-legend { display: flex; flex-direction: column; gap: 3px; margin-top: 5px; padding-left: 16px; }
+.help-legend-row { display: flex; align-items: center; gap: 6px; font-size: 11px; color: #8b949e; }
+.leg-swatch { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+
 /* scrollbar */
 ::-webkit-scrollbar { width: 4px; }
 ::-webkit-scrollbar-track { background: #0d1117; }
@@ -182,6 +207,10 @@ input[type="datetime-local"]:focus { outline: none; border-color: #388bfd; }
     <span class="pill p-gaps"    id="stat-gaps">Gaps: –</span>
     <span class="pill p-jumps"   id="stat-jumps">Jumps: –</span>
   </div>
+  <button id="btn-help" title="Help" style="
+    margin-left:auto; width:28px; height:28px; border-radius:50%;
+    background:#21262d; border:1px solid #30363d; color:#8b949e;
+    font-size:14px; cursor:pointer; flex-shrink:0; line-height:1;">?</button>
 </div>
 
 <div id="main">
@@ -191,6 +220,65 @@ input[type="datetime-local"]:focus { outline: none; border-color: #388bfd; }
   </div>
 
   <div id="sidebar">
+
+    <div id="help-panel">
+      <h4>ℹ Guide</h4>
+
+      <div class="help-block">
+        <div class="help-title">
+          <div class="help-dot" style="background:#d29922"></div>
+          GAP — Missing AIS data
+        </div>
+        <div class="help-body">
+          A vessel had <b>no AIS ping for more than 3 minutes</b> between two
+          consecutive positions. Possible reasons: transponder switched off,
+          vessel left reception range, or signal interference.<br>
+          <b>Shown as:</b> orange circles on the map.
+        </div>
+      </div>
+
+      <div class="help-block">
+        <div class="help-title">
+          <div class="help-dot" style="background:#f85149"></div>
+          JUMP — Impossible position leap
+        </div>
+        <div class="help-body">
+          The implied speed between two consecutive pings exceeds <b>40 knots</b>
+          — physically impossible for a normal vessel. Caused by GPS errors,
+          corrupted data, or duplicate MMSI numbers.<br>
+          <b>Shown as:</b> red circles on the map.
+        </div>
+      </div>
+
+      <div class="help-block">
+        <div class="help-title">
+          <div class="help-dot" style="background:#58a6ff"></div>
+          Distance from Hydrophone
+        </div>
+        <div class="help-body">
+          Straight-line distance from the hydrophone to the vessel's AIS position.
+        </div>
+        <div class="help-legend">
+          <div class="help-legend-row">
+            <div class="leg-swatch" style="background:#56d364; border:1px solid #3fb950"></div>
+            <span><b style="color:#c9d1d9">Green</b> — closer than 5 km</span>
+          </div>
+          <div class="help-legend-row">
+            <div class="leg-swatch" style="background:#79c0ff; border:1px solid #388bfd"></div>
+            <span><b style="color:#c9d1d9">Blue</b> — 5 – 10 km</span>
+          </div>
+          <div class="help-legend-row">
+            <div class="leg-swatch" style="background:#484f58; border:1px solid #30363d"></div>
+            <span><b style="color:#c9d1d9">Gray</b> — beyond 10 km</span>
+          </div>
+          <div style="margin-top:4px;font-size:11px;color:#8b949e">
+            Hover any vessel dot on the map to see its exact distance.<br>
+            Click a vessel → the bottom chart shows distance over time.
+          </div>
+        </div>
+      </div>
+    </div>
+
     <div class="s-sec">
       <h3>Database</h3>
       <select id="db-sel"><option value="">All databases</option></select>
@@ -250,6 +338,12 @@ input[type="datetime-local"]:focus { outline: none; border-color: #388bfd; }
 
 <div id="bottom">
   <div id="timeline-wrap">
+    <button id="btn-global" title="All vessels playback"
+      style="padding:0 10px;height:30px;border-radius:5px;background:#21262d;
+             border:1px solid #30363d;color:#8b949e;font-size:11px;font-weight:600;
+             cursor:pointer;white-space:nowrap;flex-shrink:0;">
+      All vessels
+    </button>
     <button id="btn-play" title="Play / Pause">▶</button>
     <select id="speed-sel">
       <option value="1">1×</option>
@@ -290,8 +384,19 @@ let playAnchorTrack = 0;
 let movingMarker = null;
 let gapMarkers   = [];
 let jumpMarkers  = [];
-let vesselMarkers = {};   // mmsi → last-position L.marker
-let sortByDist    = false;
+let vesselMarkers  = {};   // mmsi → last-position L.marker
+let sortByDist     = false;
+
+// ── Global playback state ─────────────────────────────────────────────────
+let globalMode     = false;
+let globalMarkers  = {};   // mmsi → L.circleMarker (live position dots)
+let processedTracks = {};  // mmsi → [{t_ms, lat, lon}] sorted, for interpolation
+let globalTimeMin  = null; // ms
+let globalTimeMax  = null;
+let globalPlaying  = false;
+let globalRafId    = null;
+let globalAnchorReal  = 0;
+let globalAnchorTime  = 0; // ms into global range
 
 // ── Map ──────────────────────────────────────────────────────────────────
 const map = L.map('map', { preferCanvas: true }).setView(HYDROPHONE, 11);
@@ -393,6 +498,169 @@ function showLoading(show) {
   document.getElementById('loading-overlay').style.display = show ? 'block' : 'none';
 }
 
+// ── Global playback helpers ───────────────────────────────────────────────
+
+function buildProcessedTracks() {
+  processedTracks = {};
+  globalTimeMin   = null;
+  globalTimeMax   = null;
+  for (const [mmsi, track] of Object.entries(tracks)) {
+    const pts = track
+      .filter(p => p.lat && p.lon && p.timestamp)
+      .map(p => ({ t: parseTs(p.timestamp), lat: p.lat, lon: p.lon }))
+      .sort((a, b) => a.t - b.t);
+    if (!pts.length) continue;
+    processedTracks[mmsi] = pts;
+    if (globalTimeMin === null || pts[0].t < globalTimeMin) globalTimeMin = pts[0].t;
+    const last = pts[pts.length - 1].t;
+    if (globalTimeMax === null || last > globalTimeMax)     globalTimeMax = last;
+  }
+}
+
+function interpolatePosAt(mmsi, tMs) {
+  const pts = processedTracks[mmsi];
+  if (!pts || !pts.length) return null;
+  if (tMs < pts[0].t - 300000) return null;   // >5 min before first ping
+  if (tMs > pts[pts.length-1].t + 300000) return null; // >5 min after last ping
+
+  // Binary search for bracketing points
+  let lo = 0, hi = pts.length - 1;
+  while (lo < hi) {
+    const mid = (lo + hi + 1) >> 1;
+    if (pts[mid].t <= tMs) lo = mid; else hi = mid - 1;
+  }
+  const pb = pts[lo];
+  if (lo === pts.length - 1) return { lat: pb.lat, lon: pb.lon };
+  const pa  = pts[lo + 1];
+  const r   = (tMs - pb.t) / (pa.t - pb.t);
+  return { lat: pb.lat + r * (pa.lat - pb.lat), lon: pb.lon + r * (pa.lon - pb.lon) };
+}
+
+function enterGlobalMode() {
+  globalMode = true;
+  const btn  = document.getElementById('btn-global');
+  btn.style.background  = '#1f3a5f';
+  btn.style.borderColor = '#388bfd';
+  btn.style.color       = '#58a6ff';
+
+  // Swap speed options
+  const sel = document.getElementById('speed-sel');
+  sel.innerHTML = `
+    <option value="30">30×</option>
+    <option value="60" selected>60×</option>
+    <option value="120">120×</option>
+    <option value="300">300×</option>`;
+
+  // Setup global timeline slider (seconds resolution)
+  const slider = document.getElementById('timeline');
+  const durSec = Math.round((globalTimeMax - globalTimeMin) / 1000);
+  slider.min = 0; slider.max = durSec; slider.value = 0; slider.disabled = false;
+
+  updateGlobalMarkers(globalTimeMin);
+  updateGlobalTimeDisplay(globalTimeMin);
+
+  // Dim all polylines
+  Object.values(polylines).forEach(pl => pl.setStyle({ opacity: 0.15, weight: 1 }));
+}
+
+function exitGlobalMode() {
+  globalMode = false;
+  stopGlobalPlayback();
+
+  // Remove global dots
+  Object.values(globalMarkers).forEach(m => map.removeLayer(m));
+  globalMarkers = {};
+
+  const btn = document.getElementById('btn-global');
+  btn.style.background  = '#21262d';
+  btn.style.borderColor = '#30363d';
+  btn.style.color       = '#8b949e';
+
+  // Restore speed options
+  const sel = document.getElementById('speed-sel');
+  sel.innerHTML = `
+    <option value="1">1×</option>
+    <option value="5">5×</option>
+    <option value="20">20×</option>`;
+
+  // Reset timeline
+  const slider = document.getElementById('timeline');
+  slider.min = 0; slider.max = 0; slider.value = 0; slider.disabled = true;
+  document.getElementById('time-display').textContent = 'No vessel selected';
+
+  // Restore polyline styles
+  Object.entries(polylines).forEach(([m, pl]) => {
+    const sel2 = String(m) === String(selectedMMSI);
+    pl.setStyle({ opacity: sel2 ? 1 : 0.65, weight: sel2 ? 3 : 2 });
+  });
+}
+
+function updateGlobalMarkers(tMs) {
+  for (const [mmsi, _] of Object.entries(processedTracks)) {
+    const pos = interpolatePosAt(mmsi, tMs);
+    if (!pos) {
+      if (globalMarkers[mmsi]) {
+        globalMarkers[mmsi].setStyle({ opacity: 0, fillOpacity: 0 });
+      }
+      continue;
+    }
+    const i     = vessels.findIndex(v => String(v.mmsi) === mmsi);
+    const color = COLORS[(i >= 0 ? i : 0) % COLORS.length];
+    if (!globalMarkers[mmsi]) {
+      globalMarkers[mmsi] = L.circleMarker([pos.lat, pos.lon], {
+        radius: 6, color: '#fff', fillColor: color,
+        fillOpacity: 0.9, weight: 1.5, opacity: 1,
+      }).addTo(map);
+      const v = vessels.find(v => String(v.mmsi) === mmsi);
+      globalMarkers[mmsi].bindTooltip(v ? (v.name || mmsi) : mmsi,
+        { permanent: false, direction: 'top', offset: [0, -8] });
+    } else {
+      globalMarkers[mmsi].setLatLng([pos.lat, pos.lon]);
+      globalMarkers[mmsi].setStyle({ opacity: 1, fillOpacity: 0.9 });
+    }
+  }
+}
+
+function updateGlobalTimeDisplay(tMs) {
+  const d = new Date(tMs);
+  const pad = n => String(n).padStart(2, '0');
+  const s = `${d.getUTCFullYear()}-${pad(d.getUTCMonth()+1)}-${pad(d.getUTCDate())} `
+          + `${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())}:${pad(d.getUTCSeconds())} UTC`;
+  document.getElementById('time-display').textContent = s;
+  // sync slider
+  const slider = document.getElementById('timeline');
+  slider.value = Math.round((tMs - globalTimeMin) / 1000);
+}
+
+function startGlobalPlayback() {
+  if (!globalTimeMin) return;
+  globalPlaying     = true;
+  globalAnchorReal  = performance.now();
+  globalAnchorTime  = (parseInt(document.getElementById('timeline').value) || 0) * 1000;
+  document.getElementById('btn-play').textContent = '⏸';
+
+  function tick(now) {
+    if (!globalPlaying) return;
+    const speed    = parseInt(document.getElementById('speed-sel').value);
+    const elapsed  = (now - globalAnchorReal) * speed;
+    const tOffset  = Math.min(globalAnchorTime + elapsed, globalTimeMax - globalTimeMin);
+    const tMs      = globalTimeMin + tOffset;
+
+    updateGlobalMarkers(tMs);
+    updateGlobalTimeDisplay(tMs);
+
+    if (tMs >= globalTimeMax) { stopGlobalPlayback(); return; }
+    globalRafId = requestAnimationFrame(tick);
+  }
+  globalRafId = requestAnimationFrame(tick);
+}
+
+function stopGlobalPlayback() {
+  if (globalRafId) { cancelAnimationFrame(globalRafId); globalRafId = null; }
+  globalPlaying = false;
+  document.getElementById('btn-play').textContent = '▶';
+}
+
 function dtToApiTs(dtVal) {
   if (!dtVal) return null;
   return dtVal.replace('T', ' ') + ':00 UTC';
@@ -460,6 +728,7 @@ async function loadData() {
 
     renderQualityCards();
     renderVesselList();   // re-render now that distances are available
+    buildProcessedTracks();
 
     // Fit map to all data
     const allPts = Object.values(tracks).flatMap(t => t.map(p => [p.lat, p.lon]));
@@ -755,27 +1024,61 @@ function stopPlayback() {
 }
 
 // ── Events ────────────────────────────────────────────────────────────────
+document.getElementById('btn-global').addEventListener('click', () => {
+  if (globalMode) {
+    exitGlobalMode();
+  } else {
+    stopPlayback();
+    enterGlobalMode();
+  }
+});
+
 document.getElementById('btn-play').addEventListener('click', () => {
-  if (isPlaying) stopPlayback(); else startPlayback();
+  if (globalMode) {
+    if (globalPlaying) stopGlobalPlayback(); else startGlobalPlayback();
+  } else {
+    if (isPlaying) stopPlayback(); else startPlayback();
+  }
 });
 
 document.getElementById('speed-sel').addEventListener('change', () => {
-  if (isPlaying) {
-    // Re-anchor at current position so speed change doesn't jump
+  if (globalMode && globalPlaying) {
+    // Re-anchor so speed change takes effect from current position
+    const curOffset = parseInt(document.getElementById('timeline').value) * 1000;
+    globalAnchorReal = performance.now();
+    globalAnchorTime = curOffset;
+  } else if (isPlaying) {
     playAnchorReal  = performance.now();
     playAnchorTrack = parseTs(currentTrack[playIdx].timestamp);
   }
 });
 
 document.getElementById('timeline').addEventListener('input', e => {
-  stopPlayback();
-  playIdx = parseInt(e.target.value);
-  updateTimeLabel(playIdx);
+  if (globalMode) {
+    stopGlobalPlayback();
+    const tMs = globalTimeMin + parseInt(e.target.value) * 1000;
+    updateGlobalMarkers(tMs);
+    updateGlobalTimeDisplay(tMs);
+  } else {
+    stopPlayback();
+    playIdx = parseInt(e.target.value);
+    updateTimeLabel(playIdx);
+  }
 });
 
 document.getElementById('db-sel').addEventListener('change', () => {
   selectedMMSI = null;
+  if (globalMode) exitGlobalMode();
   loadData();
+});
+
+document.getElementById('btn-help').addEventListener('click', function() {
+  const panel = document.getElementById('help-panel');
+  const open  = panel.style.display === 'block';
+  panel.style.display = open ? 'none' : 'block';
+  this.style.background    = open ? '#21262d' : '#1f3a5f';
+  this.style.borderColor   = open ? '#30363d' : '#388bfd';
+  this.style.color         = open ? '#8b949e' : '#58a6ff';
 });
 
 document.getElementById('btn-sort-dist').addEventListener('click', function() {
