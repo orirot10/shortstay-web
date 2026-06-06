@@ -13,13 +13,21 @@ CORS(app)
 
 HYDROPHONE_LAT = 32.843153
 HYDROPHONE_LON = 34.971938
-# Brief specifies ../ais_data/; fall back to parent folder if that doesn't exist
 _base = os.path.dirname(os.path.abspath(__file__))
-DATA_DIR = (
-    os.path.join(_base, '..', 'ais_data')
-    if os.path.isdir(os.path.join(_base, '..', 'ais_data'))
-    else os.path.join(_base, '..')
-)
+
+def _find_data_dir():
+    # 1. AIS db in same folder (Render flat deploy)
+    same = [f for f in glob.glob(os.path.join(_base, '*.db'))
+            if not any(x in os.path.basename(f) for x in ('labels', 'training'))]
+    if same:
+        return _base
+    # 2. Dedicated ais_data/ sibling folder
+    if os.path.isdir(os.path.join(_base, '..', 'ais_data')):
+        return os.path.join(_base, '..', 'ais_data')
+    # 3. Parent folder (local dev structure)
+    return os.path.join(_base, '..')
+
+DATA_DIR = _find_data_dir()
 LABELS_DB   = os.path.join(_base, 'labels.db')
 TRAINING_DB = os.path.join(_base, 'training_db.db')
 GAP_THRESHOLD_SEC = 180
@@ -100,7 +108,8 @@ def api_vessels():
     from_ts = request.args.get('from')
     to_ts   = request.args.get('to')
 
-    sql    = "SELECT mmsi, ship_name, ship_type, COUNT(*) as ping_count FROM {table}"
+    sql    = ("SELECT mmsi, ship_name, ship_type, COUNT(*) as ping_count, "
+              "MAX(json_extract(raw_json, '$.MessageType')) as msg_type FROM {table}")
     params = []
     if from_ts or to_ts:
         clauses = []
@@ -114,10 +123,19 @@ def api_vessels():
     for r in rows:
         mmsi = r['mmsi']
         if mmsi not in vessels:
+            name = r['ship_name'] or ''
+            msg  = r.get('msg_type') or ''
+            if 'ClassB' in msg:
+                ais_class = 'B'
+            elif 'PositionReport' in msg:
+                ais_class = 'A'
+            else:
+                ais_class = 'B'
             vessels[mmsi] = {
                 'mmsi': mmsi,
-                'name': r['ship_name'] or '',
+                'name': name,
                 'type': r['ship_type'] or '',
+                'ais_class': ais_class,
                 'ping_count': 0,
             }
         vessels[mmsi]['ping_count'] += r['ping_count']
